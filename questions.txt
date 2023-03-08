@@ -1,1 +1,0 @@
-limit to number of files in a directory?

@@ -2,64 +2,106 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <string.h>
+#include "minutil.h"
 
-typedef struct partition
+inode *getInode(int number, char *data)
 {
-    uint8_t bootint;
-    uint8_t start_head;
-    uint8_t start_sec;
-    uint8_t start_cyl;
-    uint8_t type;
-    uint8_t end_head;
-    uint8_t end_sec;
-    uint32_t lFirst;
-    uint32_t size;
-} partition;
+    superblock *sb = (superblock *)(data + 1024);
+    return (inode *)(data + ((2 + sb->i_blocks + sb->z_blocks) * sb->blocksize) + ((number - 1) * sizeof(inode)));
+}
 
-typedef struct superblock
-{ /* Minix Version 3 Superblock
-   * this structure found in fs/super.h
-   * in minix 3.1.1
-   */
-    /* on disk. These fields and orientation are non–negotiable */
-    uint32_t ninodes;      /* number of inodes in this filesystem */
-    uint16_t pad1;         /* make things line up properly */
-    int16_t i_blocks;      /* # of blocks used by inode bit map */
-    int16_t z_blocks;      /* # of blocks used by zone bit map */
-    uint16_t firstdata;    /* number of first data zone */
-    int16_t log_zone_size; /* log2 of blocks per zone */
-    int16_t pad2;          /* make things line up again */
-    uint32_t max_file;     /* maximum file size */
-    uint32_t zones;        /* number of zones on disk */
-    int16_t magic;         /* magic number */
-    int16_t pad3;          /* make things line up again */
-    uint16_t blocksize;    /* block size in bytes */
-    uint8_t subversion;    /* filesystem sub–version */
-} superblock;
-
-typedef struct inode
+/* Gets the directory entry at a certain index */
+dirent *getDirEntIndex(int index, inode *dir, char *data)
 {
-    uint16_t mode;  /* mode */
-    uint16_t links; /* number or links */
-    uint16_t uid;
-    uint16_t gid;
-    uint32_t size;
-    int32_t atime;
-    int32_t mtime;
-    int32_t ctime;
-    uint32_t zone[7];
-    uint32_t indirect;
-    uint32_t two_indirect;
-    uint32_t unused;
-} inode;
+    superblock *sb = (superblock *)(data + 1024);
+    int zonesize = sb->blocksize << sb->log_zone_size;
+    int blocksize = sb->blocksize;
+    int direntsPerZone = zonesize / sizeof(dirent);
+    int directZoneEntries = direntsPerZone * DIRECT_ZONES;
 
-typedef struct dirent
+    // target is inside direct zones
+    if (index <= directZoneEntries)
+    {
+        int zoneIndex = index / direntsPerZone;
+        int relativeIndex = index - (zoneIndex * direntsPerZone);
+
+        char *zone = data + (dir->zone[zoneIndex] * zonesize) + (relativeIndex * sizeof(dirent));
+        dirent *contents = (dirent *)zone;
+
+        return contents;
+    }
+    else
+    {
+        // TODO: read indirect zones
+        printf("direct zones exceeded! will be fixed later...\n");
+        exit(-1);
+    }
+}
+
+/* Gets the directory entry with a certain name */
+dirent *getDirEntName(char *name, inode *dir, char *data)
 {
-    uint32_t inode;
-    unsigned char name[60];
-} dirent;
+    int containedFiles = dir->size / 64;
 
-int printContents(inode *dir, char *data, int zonesize)
+    for (int i = 0; i < containedFiles; i++)
+    {
+        dirent *current = getDirEntIndex(i, dir, data);
+
+        if (current->inode != 0 && strcmp(name, current->name) == 0)
+        {
+            return current;
+        }
+    }
+
+    return NULL;
+}
+
+/* Finds a file inode given the path */
+inode *findFile(char *path, char *data)
+{
+    inode *current = getInode(1, data);
+
+    char *tempPath = malloc(sizeof(path));
+    strcpy(tempPath, path);
+
+    char *token = strtok(tempPath, "/");
+    while (token != NULL)
+    {
+        dirent *newDir = getDirEntName(token, current, data);
+
+        if (current == NULL)
+        {
+            return NULL;
+        }
+        current = getInode(newDir->inode, data);
+
+        token = strtok(NULL, "/");
+    }
+
+    return current;
+}
+
+/* Prints the permissions and other info for a file */
+void printFileInfo(inode *file, char *name)
+{
+    char modes[10];
+    modes[0] = ((file->mode & 0170000) == 040000) ? 'd' : '-';
+    modes[1] = (file->mode & 0400) ? 'r' : '-';
+    modes[2] = (file->mode & 0200) ? 'w' : '-';
+    modes[3] = (file->mode & 0100) ? 'x' : '-';
+    modes[4] = (file->mode & 040) ? 'r' : '-';
+    modes[5] = (file->mode & 020) ? 'w' : '-';
+    modes[6] = (file->mode & 010) ? 'x' : '-';
+    modes[7] = (file->mode & 04) ? 'r' : '-';
+    modes[8] = (file->mode & 02) ? 'w' : '-';
+    modes[9] = (file->mode & 01) ? 'x' : '-';
+
+    printf("%s %9d %s\n", modes, file->size, name);
+}
+
+/* Prints the contents of a directory */
+int printContents(inode *dir, char *path, char *data, int zonesize)
 {
     if ((dir->mode & 0170000) == 040000)
     {
@@ -68,15 +110,15 @@ int printContents(inode *dir, char *data, int zonesize)
         char *zone1 = data + (dir->zone[0] * zonesize);
         dirent *contents = (dirent *)zone1;
 
+        printf("%s/:\n", path);
+
         for (int i = 0; i < containedFiles; i++)
         {
-            dirent *current = (contents + i);
+            dirent *current = getDirEntIndex(i, dir, data);
 
             if (current->inode != 0)
             {
-                printf("file: %s, fd: %d\n", current->name, current->inode);
-
-                // TODO: print permissions/size of each file
+                printFileInfo(getInode(current->inode, data), current->name);
             }
         }
 
@@ -84,9 +126,7 @@ int printContents(inode *dir, char *data, int zonesize)
     }
     else
     {
-        printf("ERROR: file is not a directory!\n");
-
-        return -1;
+        printFileInfo(dir, path);
     }
 }
 
@@ -111,7 +151,7 @@ int main(int argc, char **argv)
     }
 
     char *filename = NULL;
-    char *path = "/";
+    char *path = "";
 
     int v_flag = 0;
     int partition = -1;
@@ -165,8 +205,6 @@ int main(int argc, char **argv)
         path = argv[optind + 1];
     }
 
-    printf("opening file: %s\n", filename);
-
     /* Open image file descriptor */
     FILE *fp = fopen(filename, "rb");
     if (fp == NULL)
@@ -185,6 +223,8 @@ int main(int argc, char **argv)
     fread(data, 1, filesize, fp);
     fclose(fp);
 
+    //TODO: handle partitions
+
     // uint8_t test = *data;
     // printf("%d\n", test);
 
@@ -200,12 +240,20 @@ int main(int argc, char **argv)
 
     // printf("zone size: %d\n", zonesize);
 
-    inode *root = (inode *)(data + ((2 + sb->i_blocks + sb->z_blocks) * sb->blocksize));
+    inode *root = getInode(1, data); //(inode *)(data + ((2 + sb->i_blocks + sb->z_blocks) * sb->blocksize));
 
     // printf("first inode size: %d\n", root->size);
+    // printContents(root, "/", data, zonesize);
 
-    printf("%s:\n", path);
-    printContents(root, data, zonesize);
+    inode *file = findFile(path, data);
+
+    if (!file)
+    {
+        printf("ERROR: file not found!\n");
+        return -1;
+    }
+
+    printContents(file, path, data, zonesize);
 
     free(data);
 }
