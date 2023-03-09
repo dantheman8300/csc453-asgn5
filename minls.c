@@ -8,33 +8,57 @@
 inode *getInode(int number, char *data)
 {
     superblock *sb = (superblock *)(data + 1024);
-    return (inode *)(data + ((2 + sb->i_blocks + sb->z_blocks) * sb->blocksize) + ((number - 1) * sizeof(inode)));
+    return (inode *)(data + ((2 + sb->i_blocks + sb->z_blocks)
+        * sb->blocksize) + ((number - 1) * sizeof(inode)));
 }
 
 /* Gets the directory entry at a certain index */
 dirent *getDirEntIndex(int index, inode *dir, char *data)
 {
     superblock *sb = (superblock *)(data + 1024);
-    int zonesize = sb->blocksize << sb->log_zone_size;
     int blocksize = sb->blocksize;
+    int zonesize = blocksize << sb->log_zone_size;
     int direntsPerZone = zonesize / sizeof(dirent);
     int directZoneEntries = direntsPerZone * DIRECT_ZONES;
 
-    // target is inside direct zones
-    if (index <= directZoneEntries)
+    /* Target is inside direct zones */
+    if (index < directZoneEntries)
     {
         int zoneIndex = index / direntsPerZone;
         int relativeIndex = index - (zoneIndex * direntsPerZone);
 
-        char *zone = data + (dir->zone[zoneIndex] * zonesize) + (relativeIndex * sizeof(dirent));
+        char *zone = data + (dir->zone[zoneIndex] * zonesize)
+            + (relativeIndex * sizeof(dirent));
         dirent *contents = (dirent *)zone;
 
         return contents;
     }
     else
     {
-        // TODO: read indirect zones
-        printf("direct zones exceeded! will be fixed later...\n");
+        int indirectIndex = index - directZoneEntries;
+        int zoneIndex = indirectIndex / direntsPerZone;
+
+        uint32_t *indirect = (uint32_t *)(data + (dir->indirect * zonesize));
+
+        superblock *sb = (superblock *)(data + 1024);
+        int blocksize = sb->blocksize;
+
+        int numIndirectLinks = blocksize / sizeof(uint32_t);
+
+        /* Target is inside indirect zones */
+        if (indirectIndex < numIndirectLinks)
+        {
+            int indexInZone = indirectIndex - (zoneIndex * direntsPerZone);
+            
+            char *zone = data + (indirect[zoneIndex] * zonesize)
+                + (indexInZone * sizeof(dirent));
+            dirent *contents = (dirent *)zone;
+
+            return contents;
+        }
+
+        // TODO: read doubly indirect zones
+        printf("first-degree indirect zones exceeded! will be fixed later...\n");
         exit(-1);
     }
 }
@@ -44,7 +68,8 @@ dirent *getDirEntName(char *name, inode *dir, char *data)
 {
     int containedFiles = dir->size / 64;
 
-    for (int i = 0; i < containedFiles; i++)
+    int i;
+    for (i = 0; i < containedFiles; i++)
     {
         dirent *current = getDirEntIndex(i, dir, data);
 
@@ -57,20 +82,32 @@ dirent *getDirEntName(char *name, inode *dir, char *data)
     return NULL;
 }
 
+/* Checks if a file is a directory */
+int isDirectory(inode *file)
+{
+    return (file->mode & 0170000) == 040000;
+}
+
 /* Finds a file inode given the path */
 inode *findFile(char *path, char *data)
 {
     inode *current = getInode(1, data);
 
-    char *tempPath = malloc(sizeof(path));
+    char *tempPath = malloc(strlen(path) + 1);
     strcpy(tempPath, path);
 
     char *token = strtok(tempPath, "/");
     while (token != NULL)
     {
-        dirent *newDir = getDirEntName(token, current, data);
+        if(!isDirectory(current))
+        {
+            fprintf(stderr, "ERROR: file not found!\n");
+            exit(-1);
+        }
 
-        if (current == NULL)
+        dirent *newDir = getDirEntName(token, current, data);        
+
+        if (newDir == NULL)
         {
             return NULL;
         }
@@ -79,14 +116,15 @@ inode *findFile(char *path, char *data)
         token = strtok(NULL, "/");
     }
 
+    free(tempPath);
     return current;
 }
 
 /* Prints the permissions and other info for a file */
 void printFileInfo(inode *file, char *name)
 {
-    char modes[10];
-    modes[0] = ((file->mode & 0170000) == 040000) ? 'd' : '-';
+    char modes[11];
+    modes[0] = isDirectory(file) ? 'd' : '-';
     modes[1] = (file->mode & 0400) ? 'r' : '-';
     modes[2] = (file->mode & 0200) ? 'w' : '-';
     modes[3] = (file->mode & 0100) ? 'x' : '-';
@@ -96,6 +134,7 @@ void printFileInfo(inode *file, char *name)
     modes[7] = (file->mode & 04) ? 'r' : '-';
     modes[8] = (file->mode & 02) ? 'w' : '-';
     modes[9] = (file->mode & 01) ? 'x' : '-';
+    modes[10] = '\0';
 
     printf("%s %9d %s\n", modes, file->size, name);
 }
@@ -103,16 +142,17 @@ void printFileInfo(inode *file, char *name)
 /* Prints the contents of a directory */
 int printContents(inode *dir, char *path, char *data, int zonesize)
 {
-    if ((dir->mode & 0170000) == 040000)
+    if (isDirectory(dir))
     {
         int containedFiles = dir->size / 64;
 
         char *zone1 = data + (dir->zone[0] * zonesize);
         dirent *contents = (dirent *)zone1;
 
-        printf("%s/:\n", path);
+        printf("%s:\n", path);
 
-        for (int i = 0; i < containedFiles; i++)
+        int i;
+        for (i = 0; i < containedFiles; i++)
         {
             dirent *current = getDirEntIndex(i, dir, data);
 
@@ -133,31 +173,34 @@ int printContents(inode *dir, char *path, char *data, int zonesize)
 /* Prints program usage information */
 void printUsage()
 {
-    printf("usage: minls [ -v ] [ -p num [ -s num ] ] imagefile [ path ]\n"
-           "Options:\n"
-           "-p part    --- select partition for filesystem (default: none)\n"
-           "-s sub     --- select subpartition for filesystem (default: none)\n"
-           "-h help    --- print usage information and exit\n"
-           "-v verbose --- increase verbosity level\n");
+    printf(
+        "usage: minls [ -v ] [ -p num [ -s num ] ] imagefile [ path ]\n"
+        "Options:\n"
+        "-p part    --- select partition for filesystem (default: none)\n"
+        "-s sub     --- select subpartition for filesystem (default: none)\n"
+        "-h help    --- print usage information and exit\n"
+        "-v verbose --- increase verbosity level\n");
 }
 
 /* Gets the location on disk of a specified partition */
-unsigned char *enterPartition(unsigned char *data, unsigned char *diskStart, int partIndex)
+unsigned char *enterPartition(
+    unsigned char *data, unsigned char *diskStart, int partIndex)
 {
     /* Check partition table signature for validity */
     if (*((data + 510)) != 0x55 || *(data + 511) != 0xAA)
     {
-        printf("ERROR: invalid partition table!\n");
+        fprintf(stderr, "ERROR: invalid partition table!\n");
         exit(-1);
     }
 
     /* Get the target partition table entry */
-    partition *part = (partition *)(data + 0x1BE + (partIndex * sizeof(partition)));
+    partition *part =
+        (partition *)(data + 0x1BE + (partIndex * sizeof(partition)));
 
     /* Make sure it is a valid MINIX partition */
     if (part->type != 0x81)
     {
-        printf("ERROR: not a MINIX partition!\n");
+        fprintf(stderr, "ERROR: not a MINIX partition!\n");
         exit(-1);
     }
 
@@ -178,7 +221,7 @@ int main(int argc, char **argv)
     }
 
     char *filename = NULL;
-    char *path = "";
+    char *path = "/";
 
     int v_flag = 0;
     int usePartition = -1;
@@ -195,7 +238,7 @@ int main(int argc, char **argv)
             usePartition = atoi(optarg);
             if (usePartition < 0 || usePartition > 3)
             {
-                printf("ERROR: partition must be in the range 0-3.\n");
+                fprintf(stderr, "ERROR: partition must be in the range 0-3.\n");
                 exit(-1);
             }
             break;
@@ -203,14 +246,15 @@ int main(int argc, char **argv)
         case 's':
             if (usePartition == -1)
             {
-                printf("ERROR: cannot set subpartition"
+                fprintf(stderr, "ERROR: cannot set subpartition"
                        " unless main partition is specified.\n");
                 return -1;
             }
             useSubpart = atoi(optarg);
             if (useSubpart < 0 || useSubpart > 3)
             {
-                printf("ERROR: subpartition must be in the range 0-3.\n");
+                fprintf(stderr,
+                    "ERROR: subpartition must be in the range 0-3.\n");
                 exit(-1);
             }
             break;
@@ -232,7 +276,7 @@ int main(int argc, char **argv)
     }
     else
     {
-        printf("ERROR: image name required.\n");
+        fprintf(stderr, "ERROR: image name required.\n");
         printUsage();
         exit(-1);
     }
@@ -246,7 +290,7 @@ int main(int argc, char **argv)
     FILE *fp = fopen(filename, "rb");
     if (fp == NULL)
     {
-        printf("ERROR: file not found!\n");
+        fprintf(stderr, "ERROR: file not found!\n");
         return -1;
     }
 
@@ -274,7 +318,7 @@ int main(int argc, char **argv)
         {
             /* Switch to subpartition */
             data = enterPartition(data, diskStart, useSubpart);
-        }  
+        }
     }
 
     /* Find superblock */
@@ -283,8 +327,8 @@ int main(int argc, char **argv)
     /* Check magic number to ensure that this is a MINIX filesystem */
     if (sb->magic != 0x4D5A)
     {
-        printf("Bad magic number. (0x%04X)\n", sb->magic);
-        printf("This doesn't look like a MINIX filesystem.\n");
+        fprintf(stderr, "Bad magic number. (0x%04X)\n", sb->magic);
+        fprintf(stderr, "This doesn't look like a MINIX filesystem.\n");
         exit(-1);
     }
 
@@ -297,7 +341,7 @@ int main(int argc, char **argv)
     /* Make sure file was found */
     if (!file)
     {
-        printf("ERROR: file not found!\n");
+        fprintf(stderr, "ERROR: file not found!\n");
         return -1;
     }
 
