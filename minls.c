@@ -141,6 +141,33 @@ void printUsage()
            "-v verbose --- increase verbosity level\n");
 }
 
+/* Gets the location on disk of a specified partition */
+unsigned char *enterPartition(unsigned char *data, unsigned char *diskStart, int partIndex)
+{
+    /* Check partition table signature for validity */
+    if (*((data + 510)) != 0x55 || *(data + 511) != 0xAA)
+    {
+        printf("ERROR: invalid partition table!\n");
+        exit(-1);
+    }
+
+    /* Get the target partition table entry */
+    partition *part = (partition *)(data + 0x1BE + (partIndex * sizeof(partition)));
+
+    /* Make sure it is a valid MINIX partition */
+    if (part->type != 0x81)
+    {
+        printf("ERROR: not a MINIX partition!\n");
+        exit(-1);
+    }
+
+    /* Get the offset to the partition contents */
+    int start = part->lFirst * 512;
+
+    // TODO: make sure this isn't off the end of the image
+    return (diskStart + start);
+}
+
 int main(int argc, char **argv)
 {
     /* If no arguments specified, print usage */
@@ -154,8 +181,8 @@ int main(int argc, char **argv)
     char *path = "";
 
     int v_flag = 0;
-    int partition = -1;
-    int subpart = -1;
+    int usePartition = -1;
+    int useSubpart = -1;
 
     /* Loop through argument flags */
     int c;
@@ -165,17 +192,27 @@ int main(int argc, char **argv)
         {
         /* Partition is specified */
         case 'p':
-            partition = atoi(optarg);
+            usePartition = atoi(optarg);
+            if (usePartition < 0 || usePartition > 3)
+            {
+                printf("ERROR: partition must be in the range 0-3.\n");
+                exit(-1);
+            }
             break;
         /* Subpartition is specified */
         case 's':
-            if (partition == -1)
+            if (usePartition == -1)
             {
                 printf("ERROR: cannot set subpartition"
                        " unless main partition is specified.\n");
                 return -1;
             }
-            subpart = atoi(optarg);
+            useSubpart = atoi(optarg);
+            if (useSubpart < 0 || useSubpart > 3)
+            {
+                printf("ERROR: subpartition must be in the range 0-3.\n");
+                exit(-1);
+            }
             break;
         /* Help flag */
         case 'h':
@@ -219,41 +256,54 @@ int main(int argc, char **argv)
     fseek(fp, 0L, SEEK_SET);
 
     /* Read contents of file into memory */
-    char *data = malloc(filesize);
-    fread(data, 1, filesize, fp);
+    unsigned char *diskStart = malloc(filesize);
+    fread(diskStart, 1, filesize, fp);
     fclose(fp);
 
-    //TODO: handle partitions
+    unsigned char *data = diskStart;
 
-    // uint8_t test = *data;
-    // printf("%d\n", test);
+    /* If a partition was specified */
+    if (usePartition != -1)
+    {
+        /* Switch to specified partition */
+        unsigned char *diskStart = data;
+        data = enterPartition(data, diskStart, usePartition);
 
-    // partition * firstPart = (partition *) (data + 0x1BE);
+        /* If subpartition was specified */
+        if (useSubpart != -1)
+        {
+            /* Switch to subpartition */
+            data = enterPartition(data, diskStart, useSubpart);
+        }  
+    }
 
-    // printf("type: %x\n", firstPart->type);
-
+    /* Find superblock */
     superblock *sb = (superblock *)(data + 1024);
 
-    // printf("inodes: %d\n", sb->ninodes);
+    /* Check magic number to ensure that this is a MINIX filesystem */
+    if (sb->magic != 0x4D5A)
+    {
+        printf("Bad magic number. (0x%04X)\n", sb->magic);
+        printf("This doesn't look like a MINIX filesystem.\n");
+        exit(-1);
+    }
 
+    /* Calculate zone size */
     int zonesize = sb->blocksize << sb->log_zone_size;
 
-    // printf("zone size: %d\n", zonesize);
-
-    inode *root = getInode(1, data); //(inode *)(data + ((2 + sb->i_blocks + sb->z_blocks) * sb->blocksize));
-
-    // printf("first inode size: %d\n", root->size);
-    // printContents(root, "/", data, zonesize);
-
+    /* Get inode of file at path specified */
     inode *file = findFile(path, data);
 
+    /* Make sure file was found */
     if (!file)
     {
         printf("ERROR: file not found!\n");
         return -1;
     }
 
+    /* Print info about file, or directory contents */
     printContents(file, path, data, zonesize);
 
-    free(data);
+    /* Free the memory allocated for the image data */
+    free(diskStart);
 }
