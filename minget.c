@@ -242,6 +242,8 @@ char *getFileContents(inode *file, char* data, superblock* sb)
     int dataLength = 0;
     fileData = (char *)malloc(0);
 
+    int zonesize = sb->blocksize << sb->log_zone_size;
+
     int zoneIndex = 0;
 
     while (zoneIndex < 7) 
@@ -250,28 +252,80 @@ char *getFileContents(inode *file, char* data, superblock* sb)
         // zone is a hole
         if (file->zone[zoneIndex] == 0) 
         {
+            if (zoneIndex == 0) 
+            {
+                if (verbose == 1) { printf("File is empty\n"); }
+                fileData = (char *)realloc(fileData, 1);
+                fileData[0] = '\0';
+                return fileData;
+            }
             zoneIndex ++;
             continue;
         }
 
-        char *currZoneData = (char *)(data + (file->zone[zoneIndex] * sb->blocksize));
+        char *currZoneData = (char *)(data + (file->zone[zoneIndex] * zonesize));
 
         dataLength += strlen(currZoneData);
         fileData = (char *)realloc(fileData, dataLength);
 
-        strcat(fileData, (char *)(data + (file->zone[zoneIndex] * sb->blocksize)));
+        strcat(fileData, currZoneData);
         if (verbose == 1) printf("zoneIndex: %d, data size: %d\n", zoneIndex, strlen(fileData));
         zoneIndex++;
     }
 
-    // if (zoneIndex == 7) 
-    // {
-    //     int zoneIndirect = file->indirect;
-    //     if (verbose == 1) printf("indirect: %d\n", zoneIndirect);
+    int zoneIndirect = file->indirect;
+    if (verbose == 1) printf("indirect: %d\n", zoneIndirect);
+    
+    if (zoneIndirect == 0)
+    {
+        if (verbose == 1) printf("indirect is zero\n");
+    }
+    else 
+    {
+        uint32_t *indirectZoneData = (uint32_t *)(data + (zoneIndirect * zonesize));
+        int indirectZoneIndex = 0;
 
-    //     char *currZoneData = (char *)(data + (zoneIndirect * sb->blocksize));
-    //     if (verbose == 1) printf("%s", currZoneData);
-    // }
+        while (indirectZoneData[indirectZoneIndex] != NULL)
+        {
+            uint32_t currZoneDataIndex = indirectZoneData[indirectZoneIndex];
+
+            if (verbose == 1) printf("indirect zone data index [%d]: %d\n", indirectZoneIndex, currZoneDataIndex);
+
+            char *currZoneData = (char *)(data + (file->zone[currZoneDataIndex] * zonesize));
+
+            if (verbose == 1) printf("currZoneData: %s\n", currZoneData);
+
+
+            dataLength += strlen(currZoneData);
+            fileData = (char *)realloc(fileData, dataLength);
+
+            strcat(fileData, currZoneData);
+
+            if (verbose == 1) printf("zoneIndex: %d, data size: %d\n", currZoneDataIndex, strlen(fileData));
+
+            indirectZoneIndex++;
+        }
+
+        // if (verbose == 1) printf("indirect zone data: %d\n", indirectZoneData[0]);
+
+        // char *currZoneData = (char *)(data + ())
+
+        
+    }
+
+    // INCOMPLETE
+    int zoneDoubleIndirect = file->two_indirect;
+    if (verbose == 1) printf("double indirect: %d\n", zoneDoubleIndirect);
+    
+    if (zoneDoubleIndirect == 0)
+    {
+        if (verbose == 1) printf("double indirect is zero\n");
+    }
+    else 
+    {
+        char *currZoneData = (char *)(data + (zoneDoubleIndirect * sb->blocksize));
+        if (verbose == 1) printf("double indirect zone data: %s\n", currZoneData);
+    }
 
     return fileData;
 }
@@ -451,11 +505,21 @@ int main(int argc, char **argv) {
     // printContents(root, data, zonesize);
     inode *file = findFile(root, srcpathlist, data, zonesize, sb, root);
 
+    if (file == NULL) 
+    {
+        printf("ERROR: file not found\n");
+        return -1;
+    }
+
     if (verbose == 1) printf("\tfile's zone[0]: %d (first datazone: %d)\n", file->zone[0], sb->firstdata);
     if (verbose == 1) printf("\tfile size: %d \n", file->size);
 
     char *fileData = getFileContents(file, data, sb);
-    // if (verbose == 1) printf("fileData: %s\n", fileData);
+    if (fileData == NULL)
+    {
+        printf("ERROR: fileData not found\n");
+        return -1;
+    }
 
     if (dstpath == NULL)
     {
