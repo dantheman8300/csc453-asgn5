@@ -233,14 +233,14 @@ char *getFileContents(inode *file, char* data, superblock* sb)
         zoneIndex++;
     }
 
-    if (zoneIndex == 7) 
-    {
-        int zoneIndirect = file->indirect;
-        printf("indirect: %d\n", zoneIndirect);
+    // if (zoneIndex == 7) 
+    // {
+    //     int zoneIndirect = file->indirect;
+    //     printf("indirect: %d\n", zoneIndirect);
 
-        char *currZoneData = (char *)(data + (zoneIndirect * sb->blocksize));
-        printf("%s", currZoneData);
-    }
+    //     char *currZoneData = (char *)(data + (zoneIndirect * sb->blocksize));
+    //     printf("%s", currZoneData);
+    // }
 
     return fileData;
 }
