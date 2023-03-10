@@ -62,6 +62,8 @@ typedef struct dirent
     unsigned char name[60];
 } dirent;
 
+int verbose = 0;
+
 char** str_split(char* a_str, const char a_delim)
 {
     char** result    = 0;
@@ -125,7 +127,7 @@ int printContents(inode *dir, char *data, int zonesize)
 
             if (current->inode != 0)
             {
-                printf("file: %s, fd: %d\n", current->name, current->inode);
+                if (verbose == 1) printf("file: %s, fd: %d\n", current->name, current->inode);
 
                 // TODO: print permissions/size of each file
             }
@@ -149,7 +151,7 @@ inode *findFile(inode *dir, char **srcpathlist, char *data, int zonesize, superb
         return NULL;
     }
 
-    printf("%s\n", srcpathlist[0]);
+    if (verbose == 1) printf("%s\n", srcpathlist[0]);
 
 
     if ((dir->mode & 0170000) == 040000)
@@ -166,15 +168,15 @@ inode *findFile(inode *dir, char **srcpathlist, char *data, int zonesize, superb
 
             if (current->inode != 0)
             {
-                // printf("file: %s, fd: %d\n", current->name, current->inode);
+                // if (verbose == 1) printf("file: %s, fd: %d\n", current->name, current->inode);
 
                 if (strcmp(current->name, srcpathlist[0]) == 0) 
                 {
-                    printf("\tthis is the matching name\n");
-                    printf("\tinode: %d\n", current->inode);
+                    if (verbose == 1) printf("\tthis is the matching name\n");
+                    if (verbose == 1) printf("\tinode: %d\n", current->inode);
                     inode *foundFile = root + current->inode - 1;
-                    printf("\tfirst inode size: %d\n", foundFile->size);
-                    printf("\tfirst inode mode: %d\n", foundFile->mode);
+                    if (verbose == 1) printf("\tfirst inode size: %d\n", foundFile->size);
+                    if (verbose == 1) printf("\tfirst inode mode: %d\n", foundFile->mode);
                     
                     if ((foundFile->mode & 0170000) == 040000) 
                     {
@@ -184,7 +186,7 @@ inode *findFile(inode *dir, char **srcpathlist, char *data, int zonesize, superb
                     {
                         if (srcpathlist[1] == NULL ) 
                         {
-                            printf("**found file: %s\n", current->name);
+                            if (verbose == 1) printf("**found file: %s\n", current->name);
                             return foundFile;    
                         }
                         printf("ERROR: Reached file too early\n");
@@ -229,17 +231,17 @@ char *getFileContents(inode *file, char* data, superblock* sb)
         fileData = (char *)realloc(fileData, dataLength);
 
         strcat(fileData, (char *)(data + (file->zone[zoneIndex] * sb->blocksize)));
-        printf("zoneIndex: %d, data size: %d\n", zoneIndex, strlen(fileData));
+        if (verbose == 1) printf("zoneIndex: %d, data size: %d\n", zoneIndex, strlen(fileData));
         zoneIndex++;
     }
 
     // if (zoneIndex == 7) 
     // {
     //     int zoneIndirect = file->indirect;
-    //     printf("indirect: %d\n", zoneIndirect);
+    //     if (verbose == 1) printf("indirect: %d\n", zoneIndirect);
 
     //     char *currZoneData = (char *)(data + (zoneIndirect * sb->blocksize));
-    //     printf("%s", currZoneData);
+    //     if (verbose == 1) printf("%s", currZoneData);
     // }
 
     return fileData;
@@ -302,6 +304,7 @@ int main(int argc, char **argv) {
         /* Verbose mode enabled */
         case 'v':
             v_flag = 1;
+            verbose = 1;
             break;
         }
     }
@@ -313,7 +316,7 @@ int main(int argc, char **argv) {
     }
     else
     {
-        printf("ERROR: image name required.\n");
+        if (verbose == 1) printf("ERROR: image name required.\n");
         printUsage();
         exit(-1);
     }
@@ -330,7 +333,7 @@ int main(int argc, char **argv) {
     }
     else
     {
-        printf("ERROR: srcpath required.\n");
+        if (verbose == 1) printf("ERROR: srcpath required.\n");
         printUsage();
         exit(-1);
     }
@@ -344,18 +347,18 @@ int main(int argc, char **argv) {
     }
     else
     {
-        printf("No dst path given, printing to stdout\n");
+        if (verbose == 1) printf("No dst path given, printing to stdout\n");
     }
 
-    printf("srcpath: %s\n", srcpath);
-    printf("srcpathlist[0]: %s\n", srcpathlist[0]);
+    if (verbose == 1) printf("srcpath: %s\n", srcpath);
+    if (verbose == 1) printf("srcpathlist[0]: %s\n", srcpathlist[0]);
 
-    printf("opening file: %s\n", filename);
+    if (verbose == 1) printf("opening file: %s\n", filename);
 
 
     FILE *fp = fopen(filename, "rb");
     if (fp == NULL) {
-        printf("ERROR: file not found!\n");
+        if (verbose == 1) printf("ERROR: file not found!\n");
         return -1;
     }
 
@@ -373,21 +376,21 @@ int main(int argc, char **argv) {
 
     int zonesize = sb->blocksize << sb->log_zone_size;
 
-    printf("zone size: %d\n", zonesize);
+    if (verbose == 1) printf("zone size: %d\n", zonesize);
 
     inode *root = (inode *)(data + ((2 + sb->i_blocks + sb->z_blocks) * sb->blocksize));
 
-    printf("first inode size: %d\n", root->size);
-    printf("first inode mode: %d\n", root->mode);
+    if (verbose == 1) printf("first inode size: %d\n", root->size);
+    if (verbose == 1) printf("first inode mode: %d\n", root->mode);
 
     // printContents(root, data, zonesize);
     inode *file = findFile(root, srcpathlist, data, zonesize, sb, root);
 
-    printf("\tfile's zone[0]: %d (first datazone: %d)\n", file->zone[0], sb->firstdata);
-    printf("\tfile size: %d \n", file->size);
+    if (verbose == 1) printf("\tfile's zone[0]: %d (first datazone: %d)\n", file->zone[0], sb->firstdata);
+    if (verbose == 1) printf("\tfile size: %d \n", file->size);
 
     char *fileData = getFileContents(file, data, sb);
-    // printf("fileData: %s\n", fileData);
+    // if (verbose == 1) printf("fileData: %s\n", fileData);
 
     if (dstpath == NULL)
     {
