@@ -269,7 +269,7 @@ char *getFileContents(inode *file, char* data, superblock* sb)
         fileData = (char *)realloc(fileData, dataLength);
 
         strcat(fileData, currZoneData);
-        if (verbose == 1) printf("zoneIndex: %d, data size: %d\n", zoneIndex, strlen(fileData));
+        if (verbose == 1) printf("zoneIndex: %d, dataZoneIndex: %d,  data size: %d\n", zoneIndex, file->zone[zoneIndex],  strlen(fileData));
         zoneIndex++;
     }
 
@@ -291,9 +291,9 @@ char *getFileContents(inode *file, char* data, superblock* sb)
 
             if (verbose == 1) printf("indirect zone data index [%d]: %d\n", indirectZoneIndex, currZoneDataIndex);
 
-            char *currZoneData = (char *)(data + (file->zone[currZoneDataIndex] * zonesize));
+            char *currZoneData = (char *)(data + (currZoneDataIndex * zonesize));
 
-            if (verbose == 1) printf("currZoneData: %s\n", currZoneData);
+            // if (verbose == 1) printf("currZoneData: %s\n", currZoneData);
 
 
             dataLength += strlen(currZoneData);
