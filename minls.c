@@ -13,49 +13,37 @@ inode *getInode(int number, char *data)
         * sb->blocksize) + ((number - 1) * sizeof(inode)));
 }
 
-/* Gets the directory entry at a certain index */
-dirent *getDirEntIndex(int index, inode *dir, char *data)
+/* Gets a data zone from an inode at a given index (starting from zero) */
+char *getZoneByIndex(int index, inode *file, char *data)
 {
     superblock *sb = (superblock *)(data + 1024);
     int blocksize = sb->blocksize;
     int zonesize = blocksize << sb->log_zone_size;
-    int direntsPerZone = zonesize / sizeof(dirent);
-    int directZoneEntries = direntsPerZone * DIRECT_ZONES;
 
-    /* Target is inside direct zones */
-    if (index < directZoneEntries)
+    /* Target is a direct zone */
+    if(index < 7)
     {
-        int zoneIndex = index / direntsPerZone;
-        int relativeIndex = index - (zoneIndex * direntsPerZone);
-
-        char *zone = data + (dir->zone[zoneIndex] * zonesize)
-            + (relativeIndex * sizeof(dirent));
-        dirent *contents = (dirent *)zone;
-
-        return contents;
+        return data + (file->zone[index] * zonesize);
     }
+    /* Target is an indirect zone */
     else
     {
-        int indirectIndex = index - directZoneEntries;
-        int zoneIndex = indirectIndex / direntsPerZone;
-
-        uint32_t *indirect = (uint32_t *)(data + (dir->indirect * zonesize));
-
-        superblock *sb = (superblock *)(data + 1024);
-        int blocksize = sb->blocksize;
-
+        int indirectIndex = index - 7;
         int numIndirectLinks = blocksize / sizeof(uint32_t);
-
-        /* Target is inside indirect zones */
+        
+        /* Target is in a single indirect zone */
         if (indirectIndex < numIndirectLinks)
         {
-            int indexInZone = indirectIndex - (zoneIndex * direntsPerZone);
-            
-            char *zone = data + (indirect[zoneIndex] * zonesize)
-                + (indexInZone * sizeof(dirent));
-            dirent *contents = (dirent *)zone;
+            /* Get reference to indirect zone */
+            uint32_t *indirectZone =
+                (uint32_t *)(data + (file->indirect * zonesize));
 
-            return contents;
+            /* Check if the zone is a hole */
+            if(indirectZone[indirectIndex] == 0)
+                return NULL;
+            
+            /* Find and return the target zone */
+            return data + (indirectZone[indirectIndex] * zonesize);
         }
 
         // TODO: read doubly indirect zones
@@ -64,20 +52,36 @@ dirent *getDirEntIndex(int index, inode *dir, char *data)
     }
 }
 
+/* Gets the directory entry at a certain index */
+dirent *getDirEntByIndex(int index, inode *dir, char *data)
+{
+    superblock *sb = (superblock *)(data + 1024);
+    int zonesize = sb->blocksize << sb->log_zone_size;
+    int direntsPerZone = zonesize / sizeof(dirent);
+
+    /* Get zone containing target dirent */
+    int targetZoneIndex = index / direntsPerZone;
+    char *targetZone = getZoneByIndex(targetZoneIndex, dir, data);
+
+    /* Get index of target dirent in the zone */
+    int relativeIndex = index - (targetZoneIndex * direntsPerZone);
+
+    /* Get target dirent */
+    return (dirent *)(targetZone + (relativeIndex * sizeof(dirent)));
+}
+
 /* Gets the directory entry with a certain name */
-dirent *getDirEntName(char *name, inode *dir, char *data)
+dirent *getDirEntByName(char *name, inode *dir, char *data)
 {
     int containedFiles = dir->size / 64;
 
     int i;
     for (i = 0; i < containedFiles; i++)
     {
-        dirent *current = getDirEntIndex(i, dir, data);
+        dirent *current = getDirEntByIndex(i, dir, data);
 
         if (current->inode != 0 && strcmp(name, current->name) == 0)
-        {
             return current;
-        }
     }
 
     return NULL;
@@ -106,7 +110,7 @@ inode *findFile(char *path, char *data)
             exit(-1);
         }
 
-        dirent *newDir = getDirEntName(token, current, data);        
+        dirent *newDir = getDirEntByName(token, current, data);        
 
         if (newDir == NULL)
         {
@@ -161,7 +165,7 @@ int printContents(inode *dir, char *path, char *data, int zonesize)
         int i;
         for (i = 0; i < containedFiles; i++)
         {
-            dirent *current = getDirEntIndex(i, dir, data);
+            dirent *current = getDirEntByIndex(i, dir, data);
 
             if (current->inode != 0)
             {
