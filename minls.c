@@ -2,81 +2,170 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <string.h>
+#include <time.h>
+#include "minutil.h"
 
-typedef struct partition
+inode *getInode(int number, char *data)
 {
-    uint8_t bootint;
-    uint8_t start_head;
-    uint8_t start_sec;
-    uint8_t start_cyl;
-    uint8_t type;
-    uint8_t end_head;
-    uint8_t end_sec;
-    uint32_t lFirst;
-    uint32_t size;
-} partition;
+    superblock *sb = (superblock *)(data + 1024);
+    return (inode *)(data + ((2 + sb->i_blocks + sb->z_blocks)
+        * sb->blocksize) + ((number - 1) * sizeof(inode)));
+}
 
-typedef struct superblock
-{ /* Minix Version 3 Superblock
-   * this structure found in fs/super.h
-   * in minix 3.1.1
-   */
-    /* on disk. These fields and orientation are non–negotiable */
-    uint32_t ninodes;      /* number of inodes in this filesystem */
-    uint16_t pad1;         /* make things line up properly */
-    int16_t i_blocks;      /* # of blocks used by inode bit map */
-    int16_t z_blocks;      /* # of blocks used by zone bit map */
-    uint16_t firstdata;    /* number of first data zone */
-    int16_t log_zone_size; /* log2 of blocks per zone */
-    int16_t pad2;          /* make things line up again */
-    uint32_t max_file;     /* maximum file size */
-    uint32_t zones;        /* number of zones on disk */
-    int16_t magic;         /* magic number */
-    int16_t pad3;          /* make things line up again */
-    uint16_t blocksize;    /* block size in bytes */
-    uint8_t subversion;    /* filesystem sub–version */
-} superblock;
-
-typedef struct inode
+/* Gets the directory entry at a certain index */
+dirent *getDirEntIndex(int index, inode *dir, char *data)
 {
-    uint16_t mode;  /* mode */
-    uint16_t links; /* number or links */
-    uint16_t uid;
-    uint16_t gid;
-    uint32_t size;
-    int32_t atime;
-    int32_t mtime;
-    int32_t ctime;
-    uint32_t zone[7];
-    uint32_t indirect;
-    uint32_t two_indirect;
-    uint32_t unused;
-} inode;
+    superblock *sb = (superblock *)(data + 1024);
+    int blocksize = sb->blocksize;
+    int zonesize = blocksize << sb->log_zone_size;
+    int direntsPerZone = zonesize / sizeof(dirent);
+    int directZoneEntries = direntsPerZone * DIRECT_ZONES;
 
-typedef struct dirent
-{
-    uint32_t inode;
-    unsigned char name[60];
-} dirent;
+    /* Target is inside direct zones */
+    if (index < directZoneEntries)
+    {
+        int zoneIndex = index / direntsPerZone;
+        int relativeIndex = index - (zoneIndex * direntsPerZone);
 
-int printContents(inode *dir, char *data, int zonesize)
+        char *zone = data + (dir->zone[zoneIndex] * zonesize)
+            + (relativeIndex * sizeof(dirent));
+        dirent *contents = (dirent *)zone;
+
+        return contents;
+    }
+    else
+    {
+        int indirectIndex = index - directZoneEntries;
+        int zoneIndex = indirectIndex / direntsPerZone;
+
+        uint32_t *indirect = (uint32_t *)(data + (dir->indirect * zonesize));
+
+        superblock *sb = (superblock *)(data + 1024);
+        int blocksize = sb->blocksize;
+
+        int numIndirectLinks = blocksize / sizeof(uint32_t);
+
+        /* Target is inside indirect zones */
+        if (indirectIndex < numIndirectLinks)
+        {
+            int indexInZone = indirectIndex - (zoneIndex * direntsPerZone);
+            
+            char *zone = data + (indirect[zoneIndex] * zonesize)
+                + (indexInZone * sizeof(dirent));
+            dirent *contents = (dirent *)zone;
+
+            return contents;
+        }
+
+        // TODO: read doubly indirect zones
+        printf("first-degree indirect zones exceeded!\n");
+        exit(-1);
+    }
+}
+
+/* Gets the directory entry with a certain name */
+dirent *getDirEntName(char *name, inode *dir, char *data)
 {
-    if ((dir->mode & 0170000) == 040000)
+    int containedFiles = dir->size / 64;
+
+    int i;
+    for (i = 0; i < containedFiles; i++)
+    {
+        dirent *current = getDirEntIndex(i, dir, data);
+
+        if (current->inode != 0 && strcmp(name, current->name) == 0)
+        {
+            return current;
+        }
+    }
+
+    return NULL;
+}
+
+/* Checks if a file is a directory */
+int isDirectory(inode *file)
+{
+    return (file->mode & 0170000) == 040000;
+}
+
+/* Finds a file inode given the path */
+inode *findFile(char *path, char *data)
+{
+    inode *current = getInode(1, data);
+
+    char *tempPath = malloc(strlen(path) + 1);
+    strcpy(tempPath, path);
+
+    char *token = strtok(tempPath, "/");
+    while (token != NULL)
+    {
+        if(!isDirectory(current))
+        {
+            fprintf(stderr, "ERROR: file not found!\n");
+            exit(-1);
+        }
+
+        dirent *newDir = getDirEntName(token, current, data);        
+
+        if (newDir == NULL)
+        {
+            return NULL;
+        }
+        current = getInode(newDir->inode, data);
+
+        token = strtok(NULL, "/");
+    }
+
+    free(tempPath);
+    return current;
+}
+
+/* Gets the permission string for a file */
+void *getPermissionString(int mode, char *modes)
+{
+    modes[0] = ((mode & 0170000) == 040000) ? 'd' : '-';
+    modes[1] = (mode & 0400) ? 'r' : '-';
+    modes[2] = (mode & 0200) ? 'w' : '-';
+    modes[3] = (mode & 0100) ? 'x' : '-';
+    modes[4] = (mode & 040) ? 'r' : '-';
+    modes[5] = (mode & 020) ? 'w' : '-';
+    modes[6] = (mode & 010) ? 'x' : '-';
+    modes[7] = (mode & 04) ? 'r' : '-';
+    modes[8] = (mode & 02) ? 'w' : '-';
+    modes[9] = (mode & 01) ? 'x' : '-';
+    modes[10] = '\0';
+}
+
+/* Prints the permissions and other info for a file */
+void printFileInfo(inode *file, char *name)
+{
+    char modes[11];
+    getPermissionString(file->mode, modes);
+
+    printf("%s %9d %s\n", modes, file->size, name);
+}
+
+/* Prints the contents of a directory */
+int printContents(inode *dir, char *path, char *data, int zonesize)
+{
+    if (isDirectory(dir))
     {
         int containedFiles = dir->size / 64;
 
         char *zone1 = data + (dir->zone[0] * zonesize);
         dirent *contents = (dirent *)zone1;
 
-        for (int i = 0; i < containedFiles; i++)
+        printf("%s:\n", path);
+
+        int i;
+        for (i = 0; i < containedFiles; i++)
         {
-            dirent *current = (contents + i);
+            dirent *current = getDirEntIndex(i, dir, data);
 
             if (current->inode != 0)
             {
-                printf("file: %s, fd: %d\n", current->name, current->inode);
-
-                // TODO: print permissions/size of each file
+                printFileInfo(getInode(current->inode, data), current->name);
             }
         }
 
@@ -84,21 +173,49 @@ int printContents(inode *dir, char *data, int zonesize)
     }
     else
     {
-        printf("ERROR: file is not a directory!\n");
-
-        return -1;
+        printFileInfo(dir, path);
     }
 }
 
 /* Prints program usage information */
 void printUsage()
 {
-    printf("usage: minls [ -v ] [ -p num [ -s num ] ] imagefile [ path ]\n"
-           "Options:\n"
-           "-p part    --- select partition for filesystem (default: none)\n"
-           "-s sub     --- select subpartition for filesystem (default: none)\n"
-           "-h help    --- print usage information and exit\n"
-           "-v verbose --- increase verbosity level\n");
+    printf(
+        "usage: minls [ -v ] [ -p num [ -s num ] ] imagefile [ path ]\n"
+        "Options:\n"
+        "-p part    --- select partition for filesystem (default: none)\n"
+        "-s sub     --- select subpartition for filesystem (default: none)\n"
+        "-h help    --- print usage information and exit\n"
+        "-v verbose --- increase verbosity level\n");
+}
+
+/* Gets the location on disk of a specified partition */
+unsigned char *enterPartition(
+    unsigned char *data, unsigned char *diskStart, int partIndex)
+{
+    /* Check partition table signature for validity */
+    if (*((data + 510)) != 0x55 || *(data + 511) != 0xAA)
+    {
+        fprintf(stderr, "ERROR: invalid partition table!\n");
+        exit(-1);
+    }
+
+    /* Get the target partition table entry */
+    partition *part =
+        (partition *)(data + 0x1BE + (partIndex * sizeof(partition)));
+
+    /* Make sure it is a valid MINIX partition */
+    if (part->type != 0x81)
+    {
+        fprintf(stderr, "ERROR: not a MINIX partition!\n");
+        exit(-1);
+    }
+
+    /* Get the offset to the partition contents */
+    int start = part->lFirst * 512;
+
+    // TODO: make sure this isn't off the end of the image
+    return (diskStart + start);
 }
 
 int main(int argc, char **argv)
@@ -113,9 +230,9 @@ int main(int argc, char **argv)
     char *filename = NULL;
     char *path = "/";
 
-    int v_flag = 0;
-    int partition = -1;
-    int subpart = -1;
+    int verbose = 0;
+    int usePartition = -1;
+    int useSubpart = -1;
 
     /* Loop through argument flags */
     int c;
@@ -125,17 +242,28 @@ int main(int argc, char **argv)
         {
         /* Partition is specified */
         case 'p':
-            partition = atoi(optarg);
+            usePartition = atoi(optarg);
+            if (usePartition < 0 || usePartition > 3)
+            {
+                fprintf(stderr, "ERROR: partition must be in the range 0-3.\n");
+                exit(-1);
+            }
             break;
         /* Subpartition is specified */
         case 's':
-            if (partition == -1)
+            if (usePartition == -1)
             {
-                printf("ERROR: cannot set subpartition"
+                fprintf(stderr, "ERROR: cannot set subpartition"
                        " unless main partition is specified.\n");
                 return -1;
             }
-            subpart = atoi(optarg);
+            useSubpart = atoi(optarg);
+            if (useSubpart < 0 || useSubpart > 3)
+            {
+                fprintf(stderr,
+                    "ERROR: subpartition must be in the range 0-3.\n");
+                exit(-1);
+            }
             break;
         /* Help flag */
         case 'h':
@@ -143,7 +271,7 @@ int main(int argc, char **argv)
             break;
         /* Verbose mode enabled */
         case 'v':
-            v_flag = 1;
+            verbose = 1;
             break;
         }
     }
@@ -155,7 +283,7 @@ int main(int argc, char **argv)
     }
     else
     {
-        printf("ERROR: image name required.\n");
+        fprintf(stderr, "ERROR: image name required.\n");
         printUsage();
         exit(-1);
     }
@@ -165,13 +293,11 @@ int main(int argc, char **argv)
         path = argv[optind + 1];
     }
 
-    printf("opening file: %s\n", filename);
-
     /* Open image file descriptor */
     FILE *fp = fopen(filename, "rb");
     if (fp == NULL)
     {
-        printf("ERROR: file not found!\n");
+        fprintf(stderr, "ERROR: file not found!\n");
         return -1;
     }
 
@@ -181,31 +307,135 @@ int main(int argc, char **argv)
     fseek(fp, 0L, SEEK_SET);
 
     /* Read contents of file into memory */
-    char *data = malloc(filesize);
-    fread(data, 1, filesize, fp);
+    unsigned char *diskStart = malloc(filesize);
+    fread(diskStart, 1, filesize, fp);
     fclose(fp);
 
-    // uint8_t test = *data;
-    // printf("%d\n", test);
+    unsigned char *data = diskStart;
 
-    // partition * firstPart = (partition *) (data + 0x1BE);
+    /* If a partition was specified */
+    if (usePartition != -1)
+    {
+        /* Switch to specified partition */
+        unsigned char *diskStart = data;
+        data = enterPartition(data, diskStart, usePartition);
 
-    // printf("type: %x\n", firstPart->type);
+        /* If subpartition was specified */
+        if (useSubpart != -1)
+        {
+            /* Switch to subpartition */
+            data = enterPartition(data, diskStart, useSubpart);
+        }
+    }
 
+    /* Find superblock */
     superblock *sb = (superblock *)(data + 1024);
 
-    // printf("inodes: %d\n", sb->ninodes);
+    /* Check magic number to ensure that this is a MINIX filesystem */
+    if (sb->magic != 0x4D5A)
+    {
+        fprintf(stderr, "Bad magic number. (0x%04X)\n", sb->magic);
+        fprintf(stderr, "This doesn't look like a MINIX filesystem.\n");
+        exit(-1);
+    }
 
+    /* Calculate zone size */
     int zonesize = sb->blocksize << sb->log_zone_size;
 
-    // printf("zone size: %d\n", zonesize);
+    /* If verbose mode is enabled, print superblock info */
+    if(verbose)
+    {
+        printf("\nSuperblock Contents:\n"
+            "Stored Fields:\n"
+            "  ninodes \t%10d\n"
+            "  i_blocks \t%10d\n"
+            "  z_blocks \t%10d\n"
+            "  firstdata \t%10d\n"
+            "  log_zone_size %10d (zone size: %d)\n"
+            "  max_file \t%10u\n"
+            "  magic \t%10d\n"
+            "  zones \t%10d\n"
+            "  blocksize \t%10d\n"
+            "  subversion \t%10d\n\n",
+            sb->ninodes,
+            sb->i_blocks,
+            sb->z_blocks,
+            sb->firstdata,
+            sb->log_zone_size,
+            zonesize,
+            sb->max_file,
+            sb->magic,
+            sb->zones,
+            sb->blocksize,
+            sb->subversion);
+    }
 
-    inode *root = (inode *)(data + ((2 + sb->i_blocks + sb->z_blocks) * sb->blocksize));
+    /* Get inode of file at path specified */
+    inode *file = findFile(path, data);
 
-    // printf("first inode size: %d\n", root->size);
+    /* If verbose mode is enabled, print file inode info */
+    if(verbose)
+    {
+        time_t at = file->atime;
+        time_t mt = file->mtime;
+        time_t ct = file->ctime;
 
-    printf("%s:\n", path);
-    printContents(root, data, zonesize);
+        char modes[11];
+        getPermissionString(file->mode, modes);
 
-    free(data);
+        printf("File inode:\n"
+            "  uint16_t mode \t%#10x (%s)\n"
+            "  uint16_t links \t%10d\n"
+            "  uint16_t uid \t\t%10d\n"
+            "  uint16_t gid \t\t%10d\n"
+            "  uint32_t size \t%10d\n"
+            "  uint32_t atime \t%10d --- %s"
+            "  uint32_t mtime \t%10d --- %s"
+            "  uint32_t ctime \t%10d --- %s\n",
+            file->mode,
+            modes,
+            file->links,
+            file->uid,
+            file->gid,
+            file->size,
+            file->atime,
+            ctime(&at),
+            file->mtime,
+            ctime(&mt),
+            file->ctime,
+            ctime(&ct));
+
+        printf("Direct zones:\n"
+            "           zone[0]   = %10d\n"
+            "           zone[1]   = %10d\n"
+            "           zone[2]   = %10d\n"
+            "           zone[3]   = %10d\n"
+            "           zone[4]   = %10d\n"
+            "           zone[5]   = %10d\n"
+            "           zone[6]   = %10d\n"
+            "  uint32_t indirect    %10d\n"
+            "  uint32_t double      %10d\n",
+            file->zone[0],
+            file->zone[1],
+            file->zone[2],
+            file->zone[3],
+            file->zone[4],
+            file->zone[5],
+            file->zone[6],
+            file->indirect,
+            file->two_indirect);
+    }
+
+    /* Make sure file was found */
+    if (!file)
+    {
+        fprintf(stderr, "ERROR: file not found!\n");
+        return -1;
+    }
+
+    /* Print info about file, or directory contents */
+    printContents(file, path, data, zonesize);
+
+    /* Free the memory allocated for the image data */
+    free(diskStart);
 }
