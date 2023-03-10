@@ -207,7 +207,42 @@ inode *findFile(inode *dir, char **srcpathlist, char *data, int zonesize, superb
 
 char *getFileContents(inode *file, char* data, superblock* sb)
 {
-    return (char *)(data + (file->zone[0] * sb->blocksize));
+    char *fileData;
+    int dataLength = 0;
+    fileData = (char *)malloc(0);
+
+    int zoneIndex = 0;
+
+    while (zoneIndex < 7) 
+    {
+
+        // zone is a hole
+        if (file->zone[zoneIndex] == 0) 
+        {
+            zoneIndex ++;
+            continue;
+        }
+
+        char *currZoneData = (char *)(data + (file->zone[zoneIndex] * sb->blocksize));
+
+        dataLength += strlen(currZoneData);
+        fileData = (char *)realloc(fileData, dataLength);
+
+        strcat(fileData, (char *)(data + (file->zone[zoneIndex] * sb->blocksize)));
+        printf("zoneIndex: %d, data size: %d\n", zoneIndex, strlen(fileData));
+        zoneIndex++;
+    }
+
+    if (zoneIndex == 7) 
+    {
+        int zoneIndirect = file->indirect;
+        printf("indirect: %d\n", zoneIndirect);
+
+        char *currZoneData = (char *)(data + (zoneIndirect * sb->blocksize));
+        printf("%s", currZoneData);
+    }
+
+    return fileData;
 }
 
 /* Prints program usage information */
