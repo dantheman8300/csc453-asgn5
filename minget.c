@@ -246,6 +246,8 @@ char *getFileContents(inode *file, char* data, superblock* sb)
 
     int zoneIndex = 0;
 
+    int numIndirectLinks = sb->blocksize / sizeof(uint32_t);
+
     while (zoneIndex < 7) 
     {
 
@@ -269,11 +271,11 @@ char *getFileContents(inode *file, char* data, superblock* sb)
         fileData = (char *)realloc(fileData, dataLength);
 
         strcat(fileData, currZoneData);
-        if (verbose == 1) printf("zoneIndex: %d, dataZoneIndex: %d,  data size: %d\n", zoneIndex, file->zone[zoneIndex],  strlen(fileData));
+        if (verbose == 1) printf("zoneIndex: %d, dataZoneIndex: %d,  data size: %lu\n", zoneIndex, file->zone[zoneIndex],  strlen(fileData));
         zoneIndex++;
     }
 
-    int zoneIndirect = file->indirect;
+    uint32_t zoneIndirect = file->indirect;
     if (verbose == 1) printf("indirect: %d\n", zoneIndirect);
     
     if (zoneIndirect == 0)
@@ -283,13 +285,16 @@ char *getFileContents(inode *file, char* data, superblock* sb)
     else 
     {
         uint32_t *indirectZoneData = (uint32_t *)(data + (zoneIndirect * zonesize));
-        int indirectZoneIndex = 0;
+        // int indirectZoneIndex = 0;
 
-        while (indirectZoneData[indirectZoneIndex] != NULL)
+        if (verbose == 1) printf("numIndirectLinks: %d\n", numIndirectLinks);
+
+        // while (indirectZoneIndex < numIndirectLinks)
+        for (int indirectZoneIndex = 0; indirectZoneIndex < numIndirectLinks; indirectZoneIndex++)
         {
             uint32_t currZoneDataIndex = indirectZoneData[indirectZoneIndex];
 
-            if (verbose == 1) printf("indirect zone data index [%d]: %d\n", indirectZoneIndex, currZoneDataIndex);
+            if (verbose == 1) printf("indirect zone data index [%d]: %u\n", indirectZoneIndex, currZoneDataIndex);
 
             char *currZoneData = (char *)(data + (currZoneDataIndex * zonesize));
 
@@ -301,31 +306,39 @@ char *getFileContents(inode *file, char* data, superblock* sb)
 
             strcat(fileData, currZoneData);
 
-            if (verbose == 1) printf("zoneIndex: %d, data size: %d\n", currZoneDataIndex, strlen(fileData));
+            if (verbose == 1) printf("\tzoneIndex: %d, data size: %lu\n", currZoneDataIndex, strlen(fileData));
 
-            indirectZoneIndex++;
+            // indirectZoneIndex++;
         }
 
-        // if (verbose == 1) printf("indirect zone data: %d\n", indirectZoneData[0]);
-
-        // char *currZoneData = (char *)(data + ())
-
-        
     }
 
-    // INCOMPLETE
-    int zoneDoubleIndirect = file->two_indirect;
-    if (verbose == 1) printf("double indirect: %d\n", zoneDoubleIndirect);
+    // // INCOMPLETE
+    // uint32_t zoneDoubleIndirect = file->two_indirect;
+    // if (verbose == 1) printf("double indirect: %d\n", zoneDoubleIndirect);
     
-    if (zoneDoubleIndirect == 0)
-    {
-        if (verbose == 1) printf("double indirect is zero\n");
-    }
-    else 
-    {
-        char *currZoneData = (char *)(data + (zoneDoubleIndirect * sb->blocksize));
-        if (verbose == 1) printf("double indirect zone data: %s\n", currZoneData);
-    }
+    // if (zoneDoubleIndirect == 0)
+    // {
+    //     if (verbose == 1) printf("double indirect is zero\n");
+    // }
+    // else 
+    // {
+    //     uint32_t *doubleIndirectZoneData = (uint32_t *)(data + (zoneDoubleIndirect * zonesize));
+    //     int doubleIndirectZoneIndex = 0;
+
+    //     while (doubleIndirectZoneData[doubleIndirectZoneIndex] != NULL)
+    //     {
+    //         // uint32_t currZoneDataIndex = doubleIndirectZoneData[doubleIndirectZoneIndex];
+
+    //         if (verbose == 1) printf("double indirect zone data index [%d]: \n", doubleIndirectZoneIndex);
+
+    //         doubleIndirectZoneIndex++;
+
+    //         // char *currZoneData = (char *)(data + (currZoneDataIndex * zonesize));
+
+    //         // if (verbose == 1) printf("currZoneData: %s\n", currZoneData);
+    //     }
+    // }
 
     return fileData;
 }
