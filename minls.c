@@ -1,56 +1,18 @@
+#include "minutil.h"
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
-#include <unistd.h>
 #include <string.h>
 #include <time.h>
-#include "minutil.h"
+#include <unistd.h>
 
 inode *getInode(int number, char *data, int verbose)
 {
     superblock *sb = (superblock *)(data + 1024);
-    return (inode *)(data + ((2 + sb->i_blocks + sb->z_blocks)
-        * sb->blocksize) + ((number - 1) * sizeof(inode)));
+    return (inode *)(data +
+                     ((2 + sb->i_blocks + sb->z_blocks) * sb->blocksize) +
+                     ((number - 1) * sizeof(inode)));
 }
-
-// /* Gets a data zone from an inode at a given index (starting from zero) */
-// char *getZoneByIndex(int index, inode *file, char *data)
-// {
-//     superblock *sb = (superblock *)(data + 1024);
-//     int blocksize = sb->blocksize;
-//     int zonesize = blocksize << sb->log_zone_size;
-
-//     /* Target is a direct zone */
-//     if(index < 7)
-//     {
-//         return data + (file->zone[index] * zonesize);
-//     }
-//     /* Target is an indirect zone */
-//     else
-//     {
-//         int indirectIndex = index - 7;
-//         int numIndirectLinks = blocksize / sizeof(uint32_t);
-        
-//         /* Target is in a single indirect zone */
-//         if (indirectIndex < numIndirectLinks)
-//         {
-//             /* Get reference to indirect zone */
-//             uint32_t *indirectZone =
-//                 (uint32_t *)(data + (file->indirect * zonesize));
-
-//             /* Check if the zone is a hole */
-//             if(indirectZone[indirectIndex] == 0)
-//                 return NULL;
-            
-//             /* Find and return the target zone */
-//             return data + (indirectZone[indirectIndex] * zonesize);
-//         }
-
-//         // TODO: read doubly indirect zones
-//         printf("first-degree indirect zones exceeded!\n");
-//         exit(-1);
-//     }
-// }
 
 /* Gets the directory entry at a certain index */
 dirent *getDirEntByIndex(int index, inode *dir, char *data, int verbose)
@@ -88,10 +50,7 @@ dirent *getDirEntByName(char *name, inode *dir, char *data, int verbose)
 }
 
 /* Checks if a file is a directory */
-int isDirectory(inode *file)
-{
-    return (file->mode & 0170000) == 040000;
-}
+int isDirectory(inode *file) { return (file->mode & 0170000) == 040000; }
 
 /* Finds a file inode given the path */
 inode *findFile(char *path, char *data, int verbose)
@@ -104,13 +63,13 @@ inode *findFile(char *path, char *data, int verbose)
     char *token = strtok(tempPath, "/");
     while (token != NULL)
     {
-        if(!isDirectory(current))
+        if (!isDirectory(current))
         {
             fprintf(stderr, "ERROR: file not found!\n");
             exit(-1);
         }
 
-        dirent *newDir = getDirEntByName(token, current, data, verbose);        
+        dirent *newDir = getDirEntByName(token, current, data, verbose);
 
         if (newDir == NULL)
         {
@@ -169,8 +128,8 @@ int printContents(inode *dir, char *path, char *data, int zonesize, int verbose)
 
             if (current->inode != 0)
             {
-                printFileInfo(
-                    getInode(current->inode, data, verbose), current->name);
+                printFileInfo(getInode(current->inode, data, verbose),
+                              current->name);
             }
         }
 
@@ -185,18 +144,17 @@ int printContents(inode *dir, char *path, char *data, int zonesize, int verbose)
 /* Prints program usage information */
 void printUsage()
 {
-    printf(
-        "usage: minls [ -v ] [ -p num [ -s num ] ] imagefile [ path ]\n"
-        "Options:\n"
-        "-p part    --- select partition for filesystem (default: none)\n"
-        "-s sub     --- select subpartition for filesystem (default: none)\n"
-        "-h help    --- print usage information and exit\n"
-        "-v verbose --- increase verbosity level\n");
+    printf("usage: minls [ -v ] [ -p num [ -s num ] ] imagefile [ path ]\n"
+           "Options:\n"
+           "-p part    --- select partition for filesystem (default: none)\n"
+           "-s sub     --- select subpartition for filesystem (default: none)\n"
+           "-h help    --- print usage information and exit\n"
+           "-v verbose --- increase verbosity level\n");
 }
 
 /* Gets the location on disk of a specified partition */
-unsigned char *enterPartition(
-    unsigned char *data, unsigned char *diskStart, int partIndex)
+unsigned char *enterPartition(unsigned char *data, unsigned char *diskStart,
+                              int partIndex)
 {
     /* Check partition table signature for validity */
     if (*((data + 510)) != 0x55 || *(data + 511) != 0xAA)
@@ -258,15 +216,15 @@ int main(int argc, char **argv)
         case 's':
             if (usePartition == -1)
             {
-                fprintf(stderr, "ERROR: cannot set subpartition"
-                       " unless main partition is specified.\n");
+                fprintf(stderr, "ERROR: cannot set subpartition unless main "
+                                "partition is specified.\n");
                 return -1;
             }
             useSubpart = atoi(optarg);
             if (useSubpart < 0 || useSubpart > 3)
             {
                 fprintf(stderr,
-                    "ERROR: subpartition must be in the range 0-3.\n");
+                        "ERROR: subpartition must be in the range 0-3.\n");
                 exit(-1);
             }
             break;
@@ -348,38 +306,30 @@ int main(int argc, char **argv)
     int zonesize = sb->blocksize << sb->log_zone_size;
 
     /* If verbose mode is enabled, print superblock info */
-    if(verbose)
+    if (verbose)
     {
         printf("\nSuperblock Contents:\n"
-            "Stored Fields:\n"
-            "  ninodes \t%10d\n"
-            "  i_blocks \t%10d\n"
-            "  z_blocks \t%10d\n"
-            "  firstdata \t%10d\n"
-            "  log_zone_size %10d (zone size: %d)\n"
-            "  max_file \t%10u\n"
-            "  magic \t%10d\n"
-            "  zones \t%10d\n"
-            "  blocksize \t%10d\n"
-            "  subversion \t%10d\n\n",
-            sb->ninodes,
-            sb->i_blocks,
-            sb->z_blocks,
-            sb->firstdata,
-            sb->log_zone_size,
-            zonesize,
-            sb->max_file,
-            sb->magic,
-            sb->zones,
-            sb->blocksize,
-            sb->subversion);
+               "Stored Fields:\n"
+               "  ninodes \t%10d\n"
+               "  i_blocks \t%10d\n"
+               "  z_blocks \t%10d\n"
+               "  firstdata \t%10d\n"
+               "  log_zone_size %10d (zone size: %d)\n"
+               "  max_file \t%10u\n"
+               "  magic \t%10d\n"
+               "  zones \t%10d\n"
+               "  blocksize \t%10d\n"
+               "  subversion \t%10d\n\n",
+               sb->ninodes, sb->i_blocks, sb->z_blocks, sb->firstdata,
+               sb->log_zone_size, zonesize, sb->max_file, sb->magic, sb->zones,
+               sb->blocksize, sb->subversion);
     }
 
     /* Get inode of file at path specified */
     inode *file = findFile(path, data, verbose);
 
     /* If verbose mode is enabled, print file inode info */
-    if(verbose)
+    if (verbose)
     {
         time_t at = file->atime;
         time_t mt = file->mtime;
@@ -389,46 +339,31 @@ int main(int argc, char **argv)
         getPermissionString(file->mode, modes);
 
         printf("File inode:\n"
-            "  uint16_t mode \t%#10x (%s)\n"
-            "  uint16_t links \t%10d\n"
-            "  uint16_t uid \t\t%10d\n"
-            "  uint16_t gid \t\t%10d\n"
-            "  uint32_t size \t%10d\n"
-            "  uint32_t atime \t%10d --- %s"
-            "  uint32_t mtime \t%10d --- %s"
-            "  uint32_t ctime \t%10d --- %s\n",
-            file->mode,
-            modes,
-            file->links,
-            file->uid,
-            file->gid,
-            file->size,
-            file->atime,
-            ctime(&at),
-            file->mtime,
-            ctime(&mt),
-            file->ctime,
-            ctime(&ct));
+               "  uint16_t mode \t%#10x (%s)\n"
+               "  uint16_t links \t%10d\n"
+               "  uint16_t uid \t\t%10d\n"
+               "  uint16_t gid \t\t%10d\n"
+               "  uint32_t size \t%10d\n"
+               "  uint32_t atime \t%10d --- %s"
+               "  uint32_t mtime \t%10d --- %s"
+               "  uint32_t ctime \t%10d --- %s\n",
+               file->mode, modes, file->links, file->uid, file->gid, file->size,
+               file->atime, ctime(&at), file->mtime, ctime(&mt), file->ctime,
+               ctime(&ct));
 
         printf("Direct zones:\n"
-            "           zone[0]   = %10d\n"
-            "           zone[1]   = %10d\n"
-            "           zone[2]   = %10d\n"
-            "           zone[3]   = %10d\n"
-            "           zone[4]   = %10d\n"
-            "           zone[5]   = %10d\n"
-            "           zone[6]   = %10d\n"
-            "  uint32_t indirect    %10d\n"
-            "  uint32_t double      %10d\n",
-            file->zone[0],
-            file->zone[1],
-            file->zone[2],
-            file->zone[3],
-            file->zone[4],
-            file->zone[5],
-            file->zone[6],
-            file->indirect,
-            file->two_indirect);
+               "           zone[0]   = %10d\n"
+               "           zone[1]   = %10d\n"
+               "           zone[2]   = %10d\n"
+               "           zone[3]   = %10d\n"
+               "           zone[4]   = %10d\n"
+               "           zone[5]   = %10d\n"
+               "           zone[6]   = %10d\n"
+               "  uint32_t indirect    %10d\n"
+               "  uint32_t double      %10d\n",
+               file->zone[0], file->zone[1], file->zone[2], file->zone[3],
+               file->zone[4], file->zone[5], file->zone[6], file->indirect,
+               file->two_indirect);
     }
 
     /* Make sure file was found */

@@ -2,12 +2,11 @@
 all: minls minget
 	@echo done
 
-minls: minls.c minutil.h
-	gcc -o minls minls.c
+minls: minls.c minutil.h minutil.c
+	gcc -o minls minls.c minutil.c
 
-# TEMP IN ORDER TO MAKE TEST HARNESS RUN
-minget: minget.c minutil.h
-	gcc -o minget minget.c
+minget: minget.c minutil.h minutil.c
+	gcc -o minget minget.c minutil.c
 
 clean: 
 	rm minls minget
