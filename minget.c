@@ -100,7 +100,9 @@ int printContents(inode *dir, char *data, int zonesize)
 
             if (current->inode != 0)
             {
-                if (verbose == 1) printf("file: %s, fd: %d\n", current->name, current->inode);
+                if (verbose == 1)
+                    printf("file: %s, fd: %d\n",
+                        current->name, current->inode);
 
                 // TODO: print permissions/size of each file
             }
@@ -116,7 +118,8 @@ int printContents(inode *dir, char *data, int zonesize)
     }
 }
 
-inode *findFile(inode *dir, char **srcpathlist, char *data, int zonesize, superblock *sb, inode *root)
+inode *findFile(inode *dir, char **srcpathlist, char *data,
+    int zonesize, superblock *sb, inode *root)
 {
 
     if (srcpathlist[0] == NULL) {
@@ -141,25 +144,30 @@ inode *findFile(inode *dir, char **srcpathlist, char *data, int zonesize, superb
 
             if (current->inode != 0)
             {
-                // if (verbose == 1) printf("file: %s, fd: %d\n", current->name, current->inode);
+                // if (verbose == 1)
+                // printf("file: %s, fd: %d\n", current->name, current->inode);
 
                 if (strcmp(current->name, srcpathlist[0]) == 0) 
                 {
                     if (verbose == 1) printf("\tthis is the matching name\n");
                     if (verbose == 1) printf("\tinode: %d\n", current->inode);
                     inode *foundFile = root + current->inode - 1;
-                    if (verbose == 1) printf("\tfirst inode size: %d\n", foundFile->size);
-                    if (verbose == 1) printf("\tfirst inode mode: %d\n", foundFile->mode);
+                    if (verbose == 1)
+                        printf("\tfirst inode size: %d\n", foundFile->size);
+                    if (verbose == 1)
+                        printf("\tfirst inode mode: %d\n", foundFile->mode);
                     
                     if ((foundFile->mode & 0170000) == 040000) 
                     {
-                        return findFile(foundFile, srcpathlist + 1, data, zonesize, sb, root);
+                        return findFile(foundFile, srcpathlist + 1,
+                            data, zonesize, sb, root);
                     } 
                     else 
                     {
                         if (srcpathlist[1] == NULL ) 
                         {
-                            if (verbose == 1) printf("**found file: %s\n", current->name);
+                            if (verbose == 1)
+                                printf("**found file: %s\n", current->name);
                             return foundFile;    
                         }
                         printf("ERROR: Reached file too early\n");
@@ -180,6 +188,7 @@ inode *findFile(inode *dir, char **srcpathlist, char *data, int zonesize, superb
     return NULL;
 }
 
+/*
 char *getFileContentsOld(inode *file, char* data, superblock* sb)
 {
     char *fileData;
@@ -209,13 +218,16 @@ char *getFileContentsOld(inode *file, char* data, superblock* sb)
             continue;
         }
 
-        char *currZoneData = (char *)(data + (file->zone[zoneIndex] * zonesize));
+        char *currZoneData =
+            (char *)(data + (file->zone[zoneIndex] * zonesize));
 
         dataLength += strlen(currZoneData);
         fileData = (char *)realloc(fileData, dataLength);
 
         strcat(fileData, currZoneData);
-        if (verbose == 1) printf("zoneIndex: %d, dataZoneIndex: %d,  data size: %lu\n", zoneIndex, file->zone[zoneIndex],  strlen(fileData));
+        if (verbose == 1)
+            printf("zoneIndex: %d, dataZoneIndex: %d,  data size: %lu\n",
+                zoneIndex, file->zone[zoneIndex],  strlen(fileData));
         zoneIndex++;
     }
 
@@ -228,21 +240,26 @@ char *getFileContentsOld(inode *file, char* data, superblock* sb)
     }
     else 
     {
-        uint32_t *indirectZoneData = (uint32_t *)(data + (zoneIndirect * zonesize));
+        uint32_t *indirectZoneData =
+            (uint32_t *)(data + (zoneIndirect * zonesize));
         // int indirectZoneIndex = 0;
 
         if (verbose == 1) printf("numIndirectLinks: %d\n", numIndirectLinks);
 
         // while (indirectZoneIndex < numIndirectLinks)
-        for (int indirectZoneIndex = 0; indirectZoneIndex < numIndirectLinks; indirectZoneIndex++)
+        for (int indirectZoneIndex = 0;
+            indirectZoneIndex < numIndirectLinks; indirectZoneIndex++)
         {
             uint32_t currZoneDataIndex = indirectZoneData[indirectZoneIndex];
 
             if (currZoneDataIndex == 0) continue;
 
-            if (verbose == 1) printf("indirect zone data index [%d]: %u\n", indirectZoneIndex, currZoneDataIndex);
+            if (verbose == 1)
+                printf("indirect zone data index [%d]: %u\n",
+                    indirectZoneIndex, currZoneDataIndex);
 
-            char *currZoneData = (char *)(data + (currZoneDataIndex * zonesize));
+            char *currZoneData =
+                (char *)(data + (currZoneDataIndex * zonesize));
 
             // if (verbose == 1) printf("currZoneData: %s\n", currZoneData);
 
@@ -252,7 +269,9 @@ char *getFileContentsOld(inode *file, char* data, superblock* sb)
 
             strcat(fileData, currZoneData);
 
-            if (verbose == 1) printf("\tzoneIndex: %d, data size: %lu\n", currZoneDataIndex, strlen(fileData));
+            if (verbose == 1)
+                printf("\tzoneIndex: %d, data size: %lu\n",
+                    currZoneDataIndex, strlen(fileData));
 
             // indirectZoneIndex++;
         }
@@ -268,31 +287,44 @@ char *getFileContentsOld(inode *file, char* data, superblock* sb)
     }
     else 
     {
-        uint32_t *doubleIndirectZoneData = (uint32_t *)(data + (zoneDoubleIndirect * zonesize));
+        uint32_t *doubleIndirectZoneData =
+            (uint32_t *)(data + (zoneDoubleIndirect * zonesize));
         // int doubleIndirectZoneIndex = 0;
 
-        for (int doubleIndirectZoneIndex = 0; doubleIndirectZoneIndex < numIndirectLinks; doubleIndirectZoneIndex++)
+        for (int doubleIndirectZoneIndex = 0;
+            doubleIndirectZoneIndex < numIndirectLinks;
+            doubleIndirectZoneIndex++)
         {
-            uint32_t indirectZoneIndex = doubleIndirectZoneData[doubleIndirectZoneIndex];
+            uint32_t indirectZoneIndex =
+                doubleIndirectZoneData[doubleIndirectZoneIndex];
 
             if (indirectZoneIndex == 0) continue;
 
-            if (verbose == 1) printf("double indirect zone data index [%d]: %u\n", doubleIndirectZoneIndex, indirectZoneIndex);
+            if (verbose == 1)
+                printf("double indirect zone data index [%d]: %u\n",
+                    doubleIndirectZoneIndex, indirectZoneIndex);
 
-            uint32_t *indirectZoneData = (uint32_t *)(data + (indirectZoneIndex * zonesize));
+            uint32_t *indirectZoneData =
+                (uint32_t *)(data + (indirectZoneIndex * zonesize));
 
-            for (int indirectZoneIndex = 0; indirectZoneIndex < numIndirectLinks; indirectZoneIndex++)
+            for (int indirectZoneIndex = 0;
+                indirectZoneIndex < numIndirectLinks; indirectZoneIndex++)
             {
 
-                uint32_t currZoneDataIndex = indirectZoneData[indirectZoneIndex];
+                uint32_t currZoneDataIndex =
+                    indirectZoneData[indirectZoneIndex];
 
                 if (currZoneDataIndex == 0) continue;
 
-                if (verbose == 1) printf("\tindirect zone data index [%d]: %u\n", indirectZoneIndex, currZoneDataIndex);
+                if (verbose == 1)
+                    printf("\tindirect zone data index [%d]: %u\n",
+                        indirectZoneIndex, currZoneDataIndex);
 
-                char *currZoneData = (char *)(data + (currZoneDataIndex * zonesize));
+                char *currZoneData =
+                    (char *)(data + (currZoneDataIndex * zonesize));
 
-                // if (verbose == 1) printf("currZoneData: %s\n", currZoneData);
+                // if (verbose == 1)
+                    printf("currZoneData: %s\n", currZoneData);
 
 
                 dataLength += strlen(currZoneData);
@@ -300,12 +332,15 @@ char *getFileContentsOld(inode *file, char* data, superblock* sb)
 
                 strcat(fileData, currZoneData);
 
-                if (verbose == 1) printf("\tzoneIndex: %d, data size: %lu\n", currZoneDataIndex, strlen(fileData));
+                if (verbose == 1)
+                    printf("\tzoneIndex: %d, data size: %lu\n",
+                        currZoneDataIndex, strlen(fileData));
 
                 // indirectZoneIndex++;
             }
 
-            // char *currZoneData = (char *)(data + (currZoneDataIndex * zonesize));
+            // char *currZoneData =
+                (char *)(data + (currZoneDataIndex * zonesize));
 
             // if (verbose == 1) printf("currZoneData: %s\n", currZoneData);
         }
@@ -313,16 +348,18 @@ char *getFileContentsOld(inode *file, char* data, superblock* sb)
 
     return fileData;
 }
+*/
 
 /* Prints program usage information */
 void printUsage()
 {
-    printf("usage: minget [ -v ] [ -p num [ -s num ] ] imagefile srcpath [ dstpath ]\n"
-           "Options:\n"
-           "-p part    --- select partition for filesystem (default: none)\n"
-           "-s sub     --- select subpartition for filesystem (default: none)\n"
-           "-h help    --- print usage information and exit\n"
-           "-v verbose --- increase verbosity level\n");
+    printf("usage: minget [ -v ] [ -p num [ -s num ] ]"
+        " imagefile srcpath [ dstpath ]\n"
+        "Options:\n"
+        "-p part    --- select partition for filesystem (default: none)\n"
+        "-s sub     --- select subpartition for filesystem (default: none)\n"
+        "-h help    --- print usage information and exit\n"
+        "-v verbose --- increase verbosity level\n");
 }
 
 int main(int argc, char **argv) {
@@ -355,7 +392,8 @@ int main(int argc, char **argv) {
             usePartition = atoi(optarg);
             if (usePartition < 0 || usePartition > 3)
             {
-                fprintf(stderr, "ERROR: partition must be in the range 0-3.\n");
+                fprintf(stderr,
+                    "ERROR: partition must be in the range 0-3.\n");
                 exit(-1);
             }
             break;
@@ -375,10 +413,10 @@ int main(int argc, char **argv) {
                 exit(-1);
             }
             break;
-        /* Help flag */ // Should we also return right way after printing usage?
+        /* Help flag */
         case 'h':
             printUsage();
-            break;
+            return 0;
         /* Verbose mode enabled */
         case 'v':
             v_flag = 1;
@@ -481,7 +519,8 @@ int main(int argc, char **argv) {
 
     if (verbose == 1) printf("zone size: %d\n", zonesize);
 
-    inode *root = (inode *)(data + ((2 + sb->i_blocks + sb->z_blocks) * sb->blocksize));
+    inode *root =
+        (inode *)(data + ((2 + sb->i_blocks + sb->z_blocks) * sb->blocksize));
 
     if (verbose == 1) printf("first inode size: %d\n", root->size);
     if (verbose == 1) printf("first inode mode: %d\n", root->mode);
@@ -495,7 +534,9 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-    if (verbose == 1) printf("\tfile's zone[0]: %d (first datazone: %d)\n", file->zone[0], sb->firstdata);
+    if (verbose == 1)
+        printf("\tfile's zone[0]: %d (first datazone: %d)\n",
+            file->zone[0], sb->firstdata);
     if (verbose == 1) printf("\tfile size: %d \n", file->size);
 
     char *fileData = getFileContents(file, data, verbose);
@@ -513,11 +554,11 @@ int main(int argc, char **argv) {
     else 
     {
         FILE *outfile = fopen(dstpath, "w");
-        fwrite(fileData, 1, strlen(fileData), fp);
+        fwrite(fileData, 1, file->size, fp);
+        fclose(outfile);
     }
 
 
+    free(fileData);
     free(diskStart);
-
-
 }

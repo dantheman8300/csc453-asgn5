@@ -6,54 +6,54 @@
 #include <time.h>
 #include "minutil.h"
 
-inode *getInode(int number, char *data)
+inode *getInode(int number, char *data, int verbose)
 {
     superblock *sb = (superblock *)(data + 1024);
     return (inode *)(data + ((2 + sb->i_blocks + sb->z_blocks)
         * sb->blocksize) + ((number - 1) * sizeof(inode)));
 }
 
-/* Gets a data zone from an inode at a given index (starting from zero) */
-char *getZoneByIndex(int index, inode *file, char *data)
-{
-    superblock *sb = (superblock *)(data + 1024);
-    int blocksize = sb->blocksize;
-    int zonesize = blocksize << sb->log_zone_size;
+// /* Gets a data zone from an inode at a given index (starting from zero) */
+// char *getZoneByIndex(int index, inode *file, char *data)
+// {
+//     superblock *sb = (superblock *)(data + 1024);
+//     int blocksize = sb->blocksize;
+//     int zonesize = blocksize << sb->log_zone_size;
 
-    /* Target is a direct zone */
-    if(index < 7)
-    {
-        return data + (file->zone[index] * zonesize);
-    }
-    /* Target is an indirect zone */
-    else
-    {
-        int indirectIndex = index - 7;
-        int numIndirectLinks = blocksize / sizeof(uint32_t);
+//     /* Target is a direct zone */
+//     if(index < 7)
+//     {
+//         return data + (file->zone[index] * zonesize);
+//     }
+//     /* Target is an indirect zone */
+//     else
+//     {
+//         int indirectIndex = index - 7;
+//         int numIndirectLinks = blocksize / sizeof(uint32_t);
         
-        /* Target is in a single indirect zone */
-        if (indirectIndex < numIndirectLinks)
-        {
-            /* Get reference to indirect zone */
-            uint32_t *indirectZone =
-                (uint32_t *)(data + (file->indirect * zonesize));
+//         /* Target is in a single indirect zone */
+//         if (indirectIndex < numIndirectLinks)
+//         {
+//             /* Get reference to indirect zone */
+//             uint32_t *indirectZone =
+//                 (uint32_t *)(data + (file->indirect * zonesize));
 
-            /* Check if the zone is a hole */
-            if(indirectZone[indirectIndex] == 0)
-                return NULL;
+//             /* Check if the zone is a hole */
+//             if(indirectZone[indirectIndex] == 0)
+//                 return NULL;
             
-            /* Find and return the target zone */
-            return data + (indirectZone[indirectIndex] * zonesize);
-        }
+//             /* Find and return the target zone */
+//             return data + (indirectZone[indirectIndex] * zonesize);
+//         }
 
-        // TODO: read doubly indirect zones
-        printf("first-degree indirect zones exceeded!\n");
-        exit(-1);
-    }
-}
+//         // TODO: read doubly indirect zones
+//         printf("first-degree indirect zones exceeded!\n");
+//         exit(-1);
+//     }
+// }
 
 /* Gets the directory entry at a certain index */
-dirent *getDirEntByIndex(int index, inode *dir, char *data)
+dirent *getDirEntByIndex(int index, inode *dir, char *data, int verbose)
 {
     superblock *sb = (superblock *)(data + 1024);
     int zonesize = sb->blocksize << sb->log_zone_size;
@@ -61,7 +61,7 @@ dirent *getDirEntByIndex(int index, inode *dir, char *data)
 
     /* Get zone containing target dirent */
     int targetZoneIndex = index / direntsPerZone;
-    char *targetZone = getZoneByIndex(targetZoneIndex, dir, data);
+    char *targetZone = getZoneByIndex(targetZoneIndex, dir, data, verbose);
 
     /* Get index of target dirent in the zone */
     int relativeIndex = index - (targetZoneIndex * direntsPerZone);
@@ -71,14 +71,14 @@ dirent *getDirEntByIndex(int index, inode *dir, char *data)
 }
 
 /* Gets the directory entry with a certain name */
-dirent *getDirEntByName(char *name, inode *dir, char *data)
+dirent *getDirEntByName(char *name, inode *dir, char *data, int verbose)
 {
     int containedFiles = dir->size / 64;
 
     int i;
     for (i = 0; i < containedFiles; i++)
     {
-        dirent *current = getDirEntByIndex(i, dir, data);
+        dirent *current = getDirEntByIndex(i, dir, data, verbose);
 
         if (current->inode != 0 && strcmp(name, current->name) == 0)
             return current;
@@ -94,9 +94,9 @@ int isDirectory(inode *file)
 }
 
 /* Finds a file inode given the path */
-inode *findFile(char *path, char *data)
+inode *findFile(char *path, char *data, int verbose)
 {
-    inode *current = getInode(1, data);
+    inode *current = getInode(1, data, verbose);
 
     char *tempPath = malloc(strlen(path) + 1);
     strcpy(tempPath, path);
@@ -110,13 +110,13 @@ inode *findFile(char *path, char *data)
             exit(-1);
         }
 
-        dirent *newDir = getDirEntByName(token, current, data);        
+        dirent *newDir = getDirEntByName(token, current, data, verbose);        
 
         if (newDir == NULL)
         {
             return NULL;
         }
-        current = getInode(newDir->inode, data);
+        current = getInode(newDir->inode, data, verbose);
 
         token = strtok(NULL, "/");
     }
@@ -151,7 +151,7 @@ void printFileInfo(inode *file, char *name)
 }
 
 /* Prints the contents of a directory */
-int printContents(inode *dir, char *path, char *data, int zonesize)
+int printContents(inode *dir, char *path, char *data, int zonesize, int verbose)
 {
     if (isDirectory(dir))
     {
@@ -165,11 +165,12 @@ int printContents(inode *dir, char *path, char *data, int zonesize)
         int i;
         for (i = 0; i < containedFiles; i++)
         {
-            dirent *current = getDirEntByIndex(i, dir, data);
+            dirent *current = getDirEntByIndex(i, dir, data, verbose);
 
             if (current->inode != 0)
             {
-                printFileInfo(getInode(current->inode, data), current->name);
+                printFileInfo(
+                    getInode(current->inode, data, verbose), current->name);
             }
         }
 
@@ -272,7 +273,7 @@ int main(int argc, char **argv)
         /* Help flag */
         case 'h':
             printUsage();
-            break;
+            return 0;
         /* Verbose mode enabled */
         case 'v':
             verbose = 1;
@@ -375,7 +376,7 @@ int main(int argc, char **argv)
     }
 
     /* Get inode of file at path specified */
-    inode *file = findFile(path, data);
+    inode *file = findFile(path, data, verbose);
 
     /* If verbose mode is enabled, print file inode info */
     if(verbose)
@@ -438,7 +439,7 @@ int main(int argc, char **argv)
     }
 
     /* Print info about file, or directory contents */
-    printContents(file, path, data, zonesize);
+    printContents(file, path, data, zonesize, verbose);
 
     /* Free the memory allocated for the image data */
     free(diskStart);
