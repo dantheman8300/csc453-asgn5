@@ -575,7 +575,7 @@ int main(int argc, char **argv)
     else
     {
         FILE *outfile = fopen(dstpath, "wb");
-        fwrite(fileData, 1, file->size, fp);
+        fwrite(fileData, 1, file->size, outfile);
         fclose(outfile);
     }
 
