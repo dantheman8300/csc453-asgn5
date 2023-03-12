@@ -14,28 +14,28 @@ char *getZoneByIndex(int index, inode *file, char *data, int verbose)
     int zonesize = blocksize << sb->log_zone_size;
 
     /* Target is a direct zone */
-    if(index < 7)
+    if(index < DIRECT_ZONES)
     {
         if(verbose == 1)
             printf("\tzone: %d\n", file->zone[index]);
 
-        if(verbose == 1)
-            printf("\tzone data: %s\n", data + (file->zone[index] * zonesize));
-
         /* Check if the zone is a hole */
         if(file->zone[index] == 0)
             return NULL;
+
+        if(verbose == 1)
+            printf("\tzone data: %s\n", data + (file->zone[index] * zonesize));
 
         return data + (file->zone[index] * zonesize);
     }
     /* Target is an indirect zone */
     else
     {
-        int indirectIndex = index - 7;
+        int indirectIndex = index - DIRECT_ZONES;
         int numIndirectLinks = blocksize / sizeof(uint32_t);
 
-        // if(verbose == 1)
-        //     printf("indirectIndex: %d\n", indirectIndex);
+        if(verbose == 1)
+            printf("indirectIndex: %d\n", indirectIndex);
 
         /* Target is in a single indirect zone */
         if(indirectIndex < numIndirectLinks)
@@ -56,32 +56,46 @@ char *getZoneByIndex(int index, inode *file, char *data, int verbose)
             return data + (indirectZone[indirectIndex] * zonesize);
         }
         /* Target is in a doubly indirect zone */
-        // else
-        // {
-        //     int doubleIndirectIndex = indirectIndex - numIndirectLinks;
+        else
+        {
+            int doubleIndirectIndex = indirectIndex - numIndirectLinks;
 
-        //     if (doubleIndirectIndex < numIndirectLinks * numIndirectLinks)
-        //     {
-        //         /* Get reference to doubly indirect zone */
-        //         uint32_t *doubleIndirectZone =
-        //             (uint32_t *)(data + (file->two_indirect * zonesize));
+            if(doubleIndirectIndex < numIndirectLinks * numIndirectLinks)
+            {
+                /* Check if doubly indirect zone is a hole */
+                if(file->two_indirect == 0)
+                    return NULL;
 
-        //         /* Get reference to indirect zone */
-        //         uint32_t *indirectZone =
-        //             (uint32_t *)(data +
-        //             (doubleIndirectZone[doubleIndirectIndex] * zonesize));
+                /* Get reference to doubly indirect zone */
+                uint32_t *doubleIndirectZone =
+                    (uint32_t *)(data + (file->two_indirect * zonesize));
 
-        //         /* Check if the zone is a hole */
-        //         if(indirectZone[doubleIndirectIndex % numIndirectLinks] == 0)
-        //             return NULL;
+                /* Get index of indirect zone in doubly indirect zone */
+                int indirectZoneIndex = doubleIndirectIndex / numIndirectLinks;
 
-        //         /* Find and return the target zone */
-        //         return data + (indirectZone[doubleIndirectIndex] * zonesize);
-        //     }
-        // }
+                /* Check if indirect zone is a hole */
+                if(doubleIndirectZone[indirectZoneIndex] == 0)
+                    return NULL;
 
-        // TODO: read doubly indirect zones
-        printf("second-degree indirect zones exceeded!\n");
+                /* Get reference to indirect zone */
+                uint32_t *indirectZone =
+                    (uint32_t *)(data + (doubleIndirectZone[indirectZoneIndex] *
+                                         zonesize));
+
+                /* Get index of target in indirect zone */
+                int directZoneIndex = doubleIndirectIndex % numIndirectLinks;
+
+                /* Check if the zone is a hole */
+                if(indirectZone[directZoneIndex] == 0)
+                    return NULL;
+
+                /* Find and return the target zone */
+                return data + (indirectZone[directZoneIndex] * zonesize);
+            }
+        }
+
+        fprintf(stderr,
+                "ERROR: trying to get zone exceeding maximum file size!\n");
         exit(-1);
     }
 }
@@ -120,9 +134,6 @@ char *getFileContents(inode *file, char *data, int verbose)
         /* If it's not a hole, copy it to the buffer */
         if(zoneData != NULL)
         {
-
-            // if (verbose == 1) printf("zoneData: %s\n", zoneData);
-
             int bytesToCopy = zonesize;
 
             /* If this is the last zone, only copy the relevant portion */
@@ -151,6 +162,7 @@ char *getFileContents(inode *file, char *data, int verbose)
     return fileData;
 }
 
+/* Gets an inode struct given its index */
 inode *getInode(int number, char *data, int verbose)
 {
     superblock *sb = (superblock *)(data + 1024);

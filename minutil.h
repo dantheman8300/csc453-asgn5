@@ -16,11 +16,10 @@ typedef struct partition
 } partition;
 
 typedef struct superblock
-{ /* Minix Version 3 Superblock
-   * this structure found in fs/super.h
-   * in minix 3.1.1
-   */
-    /* on disk. These fields and orientation are non–negotiable */
+{
+    /* Minix Version 3 Superblock
+        this structure found in fs/super.h in minix 3.1.1 on disk.
+        These fields and orientation are non–negotiable */
     uint32_t ninodes;      /* number of inodes in this filesystem */
     uint16_t pad1;         /* make things line up properly */
     int16_t i_blocks;      /* # of blocks used by inode bit map */
@@ -64,6 +63,7 @@ char *getZoneByIndex(int index, inode *file, char *data, int verbose);
 /* Retrieves the contents of a file */
 char *getFileContents(inode *file, char *data, int verbose);
 
+/* Gets an inode struct given its index */
 inode *getInode(int number, char *data, int verbose);
 
 /* Checks if a file is a directory */

@@ -555,28 +555,49 @@ int main(int argc, char **argv)
     }
 
     if(verbose == 1)
+    {
         printf("\tfile's zone[0]: %d (first datazone: %d)\n", file->zone[0],
                sb->firstdata);
-    if(verbose == 1)
         printf("\tfile size: %d \n", file->size);
+    }        
 
     char *fileData = getFileContents(file, data, verbose);
-    // char *fileData = getFileContentsOld(file, data, sb);
     if(fileData == NULL)
     {
-        fprintf(stderr, "ERROR: fileData not found\n");
+        fprintf(stderr, "ERROR: fileData not found!\n");
         return -1;
     }
 
+    /* No output path specified; print to stdout */
     if(dstpath == NULL)
     {
-        fwrite(fileData, 1, file->size, stdout);
+        int bytesWritten = fwrite(fileData, 1, file->size, stdout);
+        if(bytesWritten != file->size)
+        {
+            fprintf(stderr, "ERROR: could not write all data to stdout!\n");
+            return -1;
+        }
     }
+    /* Output path specified; write results to file */
     else
     {
         FILE *outfile = fopen(dstpath, "wb");
-        fwrite(fileData, 1, file->size, outfile);
-        fclose(outfile);
+        if(outfile == NULL)
+        {
+            fprintf(stderr, "ERROR: could not create/open output file!\n");
+            return -1;
+        }
+
+        int bytesWritten = fwrite(fileData, 1, file->size, outfile);
+        if(bytesWritten != file->size)
+        {
+            fprintf(stderr, "ERROR: could not write all data to file!\n");
+            return -1;
+        }
+
+        int status = fclose(outfile);
+        if(status != 0)
+            fprintf(stderr, "WARNING: could not close output file!\n");
     }
 
     free(fileData);
