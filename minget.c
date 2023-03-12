@@ -19,9 +19,9 @@ char **str_split(char *a_str, const char a_delim)
     delim[1] = 0;
 
     /* Count how many elements will be extracted. */
-    while (*tmp)
+    while(*tmp)
     {
-        if (a_delim == *tmp)
+        if(a_delim == *tmp)
         {
             count++;
             last_comma = tmp;
@@ -38,12 +38,12 @@ char **str_split(char *a_str, const char a_delim)
 
     result = malloc(sizeof(char *) * (count + 1));
 
-    if (result)
+    if(result)
     {
         size_t idx = 0;
         char *token = strtok(a_str, delim);
 
-        while (token)
+        while(token)
         {
             // assert(idx < count);
             *(result + idx++) = strdup(token);
@@ -61,7 +61,7 @@ unsigned char *enterPartition(unsigned char *data, unsigned char *diskStart,
                               int partIndex)
 {
     /* Check partition table signature for validity */
-    if (*((data + 510)) != 0x55 || *(data + 511) != 0xAA)
+    if(*((data + 510)) != 0x55 || *(data + 511) != 0xAA)
     {
         fprintf(stderr, "ERROR: invalid partition table!\n");
         exit(-1);
@@ -72,7 +72,7 @@ unsigned char *enterPartition(unsigned char *data, unsigned char *diskStart,
         (partition *)(data + 0x1BE + (partIndex * sizeof(partition)));
 
     /* Make sure it is a valid MINIX partition */
-    if (part->type != 0x81)
+    if(part->type != 0x81)
     {
         fprintf(stderr, "ERROR: not a MINIX partition!\n");
         exit(-1);
@@ -87,7 +87,7 @@ unsigned char *enterPartition(unsigned char *data, unsigned char *diskStart,
 
 int printContents(inode *dir, char *data, int zonesize)
 {
-    if ((dir->mode & 0170000) == 040000)
+    if((dir->mode & 0170000) == 040000)
     {
         int containedFiles = dir->size / 64;
 
@@ -95,13 +95,13 @@ int printContents(inode *dir, char *data, int zonesize)
         dirent *contents = (dirent *)zone1;
 
         int i;
-        for (i = 0; i < containedFiles; i++)
+        for(i = 0; i < containedFiles; i++)
         {
             dirent *current = (contents + i);
 
-            if (current->inode != 0)
+            if(current->inode != 0)
             {
-                if (verbose == 1)
+                if(verbose == 1)
                     printf("file: %s, fd: %d\n", current->name, current->inode);
 
                 // TODO: print permissions/size of each file
@@ -118,78 +118,79 @@ int printContents(inode *dir, char *data, int zonesize)
     }
 }
 
-inode *findFile(inode *dir, char **srcpathlist, char *data, int zonesize,
-                superblock *sb, inode *root)
-{
+// inode *findFile(inode *dir, char **srcpathlist, char *data, int zonesize,
+//                 superblock *sb, inode *root)
+// {
 
-    if (srcpathlist[0] == NULL)
-    {
-        printf("srcpathlist is empty\n");
-        return NULL;
-    }
+//     if (srcpathlist[0] == NULL)
+//     {
+//         printf("srcpathlist is empty\n");
+//         return NULL;
+//     }
 
-    if (verbose == 1)
-        printf("%s\n", srcpathlist[0]);
+//     if (verbose == 1)
+//         printf("%s\n", srcpathlist[0]);
 
-    if ((dir->mode & 0170000) == 040000)
-    {
-        int containedFiles = dir->size / 64;
+//     if ((dir->mode & 0170000) == 040000)
+//     {
+//         int containedFiles = dir->size / 64;
 
-        char *zone1 = data + (dir->zone[0] * zonesize);
-        dirent *contents = (dirent *)zone1;
-        dirent *current;
+//         char *zone1 = data + (dir->zone[0] * zonesize);
+//         dirent *contents = (dirent *)zone1;
+//         dirent *current;
 
-        int i;
-        for (i = 0; i < containedFiles; i++)
-        {
-            current = (contents + i);
+//         int i;
+//         for (i = 0; i < containedFiles; i++)
+//         {
+//             current = (contents + i);
 
-            if (current->inode != 0)
-            {
-                // if (verbose == 1)
-                // printf("file: %s, fd: %d\n", current->name, current->inode);
+//             if (current->inode != 0)
+//             {
+//                 // if (verbose == 1)
+//                 // printf("file: %s, fd: %d\n", current->name,
+//                 current->inode);
 
-                if (strcmp(current->name, srcpathlist[0]) == 0)
-                {
-                    if (verbose == 1)
-                        printf("\tthis is the matching name\n");
-                    if (verbose == 1)
-                        printf("\tinode: %d\n", current->inode);
-                    inode *foundFile = root + current->inode - 1;
-                    if (verbose == 1)
-                        printf("\tfirst inode size: %d\n", foundFile->size);
-                    if (verbose == 1)
-                        printf("\tfirst inode mode: %d\n", foundFile->mode);
+//                 if (strcmp(current->name, srcpathlist[0]) == 0)
+//                 {
+//                     if (verbose == 1)
+//                         printf("\tthis is the matching name\n");
+//                     if (verbose == 1)
+//                         printf("\tinode: %d\n", current->inode);
+//                     inode *foundFile = root + current->inode - 1;
+//                     if (verbose == 1)
+//                         printf("\tfirst inode size: %d\n", foundFile->size);
+//                     if (verbose == 1)
+//                         printf("\tfirst inode mode: %d\n", foundFile->mode);
 
-                    if ((foundFile->mode & 0170000) == 040000)
-                    {
-                        return findFile(foundFile, srcpathlist + 1, data,
-                                        zonesize, sb, root);
-                    }
-                    else
-                    {
-                        if (srcpathlist[1] == NULL)
-                        {
-                            if (verbose == 1)
-                                printf("**found file: %s\n", current->name);
-                            return foundFile;
-                        }
-                        fprintf(stderr, "ERROR: Reached file too early\n");
-                        return NULL;
-                    }
-                }
-            }
-        }
-    }
-    else if ((dir->mode & 0170000) == 040000)
-    {
-        fprintf(stderr, "ERROR: file is not a directory!\n");
+//                     if ((foundFile->mode & 0170000) == 040000)
+//                     {
+//                         return findFile(foundFile, srcpathlist + 1, data,
+//                                         zonesize, sb, root);
+//                     }
+//                     else
+//                     {
+//                         if (srcpathlist[1] == NULL)
+//                         {
+//                             if (verbose == 1)
+//                                 printf("**found file: %s\n", current->name);
+//                             return foundFile;
+//                         }
+//                         fprintf(stderr, "ERROR: Reached file too early\n");
+//                         return NULL;
+//                     }
+//                 }
+//             }
+//         }
+//     }
+//     else if ((dir->mode & 0170000) == 040000)
+//     {
+//         fprintf(stderr, "ERROR: file is not a directory!\n");
 
-        return NULL;
-    }
+//         return NULL;
+//     }
 
-    return NULL;
-}
+//     return NULL;
+// }
 
 /*
 char *getFileContentsOld(inode *file, char* data, superblock* sb)
@@ -371,7 +372,7 @@ int main(int argc, char **argv)
 {
 
     /* If no arguments specified, print usage */
-    if (argc < 3)
+    if(argc < 3)
     {
         printUsage();
         return 0;
@@ -389,14 +390,14 @@ int main(int argc, char **argv)
 
     /* Loop through argument flags */
     int c;
-    while ((c = getopt(argc, argv, "hvp:s:")) != -1)
+    while((c = getopt(argc, argv, "hvp:s:")) != -1)
     {
-        switch (c)
+        switch(c)
         {
         /* Partition is specified */
         case 'p':
             usePartition = atoi(optarg);
-            if (usePartition < 0 || usePartition > 3)
+            if(usePartition < 0 || usePartition > 3)
             {
                 fprintf(stderr, "ERROR: partition must be in the range 0-3.\n");
                 exit(-1);
@@ -404,14 +405,14 @@ int main(int argc, char **argv)
             break;
         /* Subpartition is specified */
         case 's':
-            if (usePartition == -1)
+            if(usePartition == -1)
             {
                 fprintf(stderr, "ERROR: cannot set subpartition"
                                 " unless main partition is specified.\n");
                 return -1;
             }
             useSubpart = atoi(optarg);
-            if (useSubpart < 0 || useSubpart > 3)
+            if(useSubpart < 0 || useSubpart > 3)
             {
                 fprintf(stderr,
                         "ERROR: subpartition must be in the range 0-3.\n");
@@ -421,7 +422,7 @@ int main(int argc, char **argv)
         /* Help flag */
         case 'h':
             printUsage();
-            return 0;
+            return -1;
         /* Verbose mode enabled */
         case 'v':
             v_flag = 1;
@@ -431,13 +432,13 @@ int main(int argc, char **argv)
     }
 
     /* Get image filename */
-    if (optind < argc)
+    if(optind < argc)
     {
         filename = argv[optind];
     }
     else
     {
-        if (verbose == 1)
+        if(verbose == 1)
             fprintf(stderr, "ERROR: image name required.\n");
         printUsage();
         exit(-1);
@@ -446,15 +447,15 @@ int main(int argc, char **argv)
     optind++;
 
     /* Get image src path */
-    if (optind < argc)
+    if(optind < argc)
     {
         srcpath = argv[optind];
 
-        srcpathlist = str_split(srcpath, '/');
+        // srcpathlist = str_split(srcpath, '/');
     }
     else
     {
-        if (verbose == 1)
+        if(verbose == 1)
             fprintf(stderr, "ERROR: srcpath required.\n");
         printUsage();
         exit(-1);
@@ -463,28 +464,28 @@ int main(int argc, char **argv)
     optind++;
 
     /* Get optional image dst path */
-    if (optind < argc)
+    if(optind < argc)
     {
         dstpath = argv[optind];
     }
     else
     {
-        if (verbose == 1)
+        if(verbose == 1)
             printf("No dst path given, printing to stdout\n");
     }
 
-    if (verbose == 1)
+    if(verbose == 1)
         printf("srcpath: %s\n", srcpath);
-    if (verbose == 1)
-        printf("srcpathlist[0]: %s\n", srcpathlist[0]);
+    // if (verbose == 1)
+    //     printf("srcpathlist[0]: %s\n", srcpathlist[0]);
 
-    if (verbose == 1)
+    if(verbose == 1)
         printf("opening file: %s\n", filename);
 
     FILE *fp = fopen(filename, "rb");
-    if (fp == NULL)
+    if(fp == NULL)
     {
-        if (verbose == 1)
+        if(verbose == 1)
             fprintf(stderr, "ERROR: file not found!\n");
         return -1;
     }
@@ -502,14 +503,14 @@ int main(int argc, char **argv)
     unsigned char *data = diskStart;
 
     /* If a partition was specified */
-    if (usePartition != -1)
+    if(usePartition != -1)
     {
         /* Switch to specified partition */
         unsigned char *diskStart = data;
         data = enterPartition(data, diskStart, usePartition);
 
         /* If subpartition was specified */
-        if (useSubpart != -1)
+        if(useSubpart != -1)
         {
             /* Switch to subpartition */
             data = enterPartition(data, diskStart, useSubpart);
@@ -519,7 +520,7 @@ int main(int argc, char **argv)
     superblock *sb = (superblock *)(data + 1024);
 
     /* Check magic number to ensure that this is a MINIX filesystem */
-    if (sb->magic != 0x4D5A)
+    if(sb->magic != 0x4D5A)
     {
         fprintf(stderr, "Bad magic number. (0x%04X)\n", sb->magic);
         fprintf(stderr, "This doesn't look like a MINIX filesystem.\n");
@@ -528,47 +529,52 @@ int main(int argc, char **argv)
 
     int zonesize = sb->blocksize << sb->log_zone_size;
 
-    if (verbose == 1)
+    if(verbose == 1)
         printf("zone size: %d\n", zonesize);
 
     inode *root =
         (inode *)(data + ((2 + sb->i_blocks + sb->z_blocks) * sb->blocksize));
 
-    if (verbose == 1)
+    if(verbose == 1)
         printf("first inode size: %d\n", root->size);
-    if (verbose == 1)
+    if(verbose == 1)
         printf("first inode mode: %d\n", root->mode);
 
     // printContents(root, data, zonesize);
-    inode *file = findFile(root, srcpathlist, data, zonesize, sb, root);
+    inode *file = findFile(srcpath, data, verbose);
 
-    if (file == NULL)
+    if(file == NULL)
     {
         fprintf(stderr, "ERROR: file not found\n");
         return -1;
     }
+    else if(isDirectory(file))
+    {
+        fprintf(stderr, "ERROR: file is a directory\n");
+        return -1;
+    }
 
-    if (verbose == 1)
+    if(verbose == 1)
         printf("\tfile's zone[0]: %d (first datazone: %d)\n", file->zone[0],
                sb->firstdata);
-    if (verbose == 1)
+    if(verbose == 1)
         printf("\tfile size: %d \n", file->size);
 
     char *fileData = getFileContents(file, data, verbose);
     // char *fileData = getFileContentsOld(file, data, sb);
-    if (fileData == NULL)
+    if(fileData == NULL)
     {
         fprintf(stderr, "ERROR: fileData not found\n");
         return -1;
     }
 
-    if (dstpath == NULL)
+    if(dstpath == NULL)
     {
         printf("%s", fileData);
     }
     else
     {
-        FILE *outfile = fopen(dstpath, "w");
+        FILE *outfile = fopen(dstpath, "wb");
         fwrite(fileData, 1, file->size, fp);
         fclose(outfile);
     }

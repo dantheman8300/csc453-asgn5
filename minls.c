@@ -6,84 +6,6 @@
 #include <time.h>
 #include <unistd.h>
 
-inode *getInode(int number, char *data, int verbose)
-{
-    superblock *sb = (superblock *)(data + 1024);
-    return (inode *)(data +
-                     ((2 + sb->i_blocks + sb->z_blocks) * sb->blocksize) +
-                     ((number - 1) * sizeof(inode)));
-}
-
-/* Gets the directory entry at a certain index */
-dirent *getDirEntByIndex(int index, inode *dir, char *data, int verbose)
-{
-    superblock *sb = (superblock *)(data + 1024);
-    int zonesize = sb->blocksize << sb->log_zone_size;
-    int direntsPerZone = zonesize / sizeof(dirent);
-
-    /* Get zone containing target dirent */
-    int targetZoneIndex = index / direntsPerZone;
-    char *targetZone = getZoneByIndex(targetZoneIndex, dir, data, verbose);
-
-    /* Get index of target dirent in the zone */
-    int relativeIndex = index - (targetZoneIndex * direntsPerZone);
-
-    /* Get target dirent */
-    return (dirent *)(targetZone + (relativeIndex * sizeof(dirent)));
-}
-
-/* Gets the directory entry with a certain name */
-dirent *getDirEntByName(char *name, inode *dir, char *data, int verbose)
-{
-    int containedFiles = dir->size / 64;
-
-    int i;
-    for (i = 0; i < containedFiles; i++)
-    {
-        dirent *current = getDirEntByIndex(i, dir, data, verbose);
-
-        if (current->inode != 0 && strcmp(name, current->name) == 0)
-            return current;
-    }
-
-    return NULL;
-}
-
-/* Checks if a file is a directory */
-int isDirectory(inode *file) { return (file->mode & 0170000) == 040000; }
-
-/* Finds a file inode given the path */
-inode *findFile(char *path, char *data, int verbose)
-{
-    inode *current = getInode(1, data, verbose);
-
-    char *tempPath = malloc(strlen(path) + 1);
-    strcpy(tempPath, path);
-
-    char *token = strtok(tempPath, "/");
-    while (token != NULL)
-    {
-        if (!isDirectory(current))
-        {
-            fprintf(stderr, "ERROR: file not found!\n");
-            exit(-1);
-        }
-
-        dirent *newDir = getDirEntByName(token, current, data, verbose);
-
-        if (newDir == NULL)
-        {
-            return NULL;
-        }
-        current = getInode(newDir->inode, data, verbose);
-
-        token = strtok(NULL, "/");
-    }
-
-    free(tempPath);
-    return current;
-}
-
 /* Gets the permission string for a file */
 void *getPermissionString(int mode, char *modes)
 {
@@ -112,7 +34,7 @@ void printFileInfo(inode *file, char *name)
 /* Prints the contents of a directory */
 int printContents(inode *dir, char *path, char *data, int zonesize, int verbose)
 {
-    if (isDirectory(dir))
+    if(isDirectory(dir))
     {
         int containedFiles = dir->size / 64;
 
@@ -122,11 +44,11 @@ int printContents(inode *dir, char *path, char *data, int zonesize, int verbose)
         printf("%s:\n", path);
 
         int i;
-        for (i = 0; i < containedFiles; i++)
+        for(i = 0; i < containedFiles; i++)
         {
             dirent *current = getDirEntByIndex(i, dir, data, verbose);
 
-            if (current->inode != 0)
+            if(current->inode != 0)
             {
                 printFileInfo(getInode(current->inode, data, verbose),
                               current->name);
@@ -144,12 +66,14 @@ int printContents(inode *dir, char *path, char *data, int zonesize, int verbose)
 /* Prints program usage information */
 void printUsage()
 {
-    printf("usage: minls [ -v ] [ -p num [ -s num ] ] imagefile [ path ]\n"
-           "Options:\n"
-           "-p part    --- select partition for filesystem (default: none)\n"
-           "-s sub     --- select subpartition for filesystem (default: none)\n"
-           "-h help    --- print usage information and exit\n"
-           "-v verbose --- increase verbosity level\n");
+    fprintf(
+        stderr,
+        "usage: minls [ -v ] [ -p num [ -s num ] ] imagefile [ path ]\n"
+        "Options:\n"
+        "-p part    --- select partition for filesystem (default: none)\n"
+        "-s sub     --- select subpartition for filesystem (default: none)\n"
+        "-h help    --- print usage information and exit\n"
+        "-v verbose --- increase verbosity level\n");
 }
 
 /* Gets the location on disk of a specified partition */
@@ -157,7 +81,7 @@ unsigned char *enterPartition(unsigned char *data, unsigned char *diskStart,
                               int partIndex)
 {
     /* Check partition table signature for validity */
-    if (*((data + 510)) != 0x55 || *(data + 511) != 0xAA)
+    if(*((data + 510)) != 0x55 || *(data + 511) != 0xAA)
     {
         fprintf(stderr, "ERROR: invalid partition table!\n");
         exit(-1);
@@ -168,7 +92,7 @@ unsigned char *enterPartition(unsigned char *data, unsigned char *diskStart,
         (partition *)(data + 0x1BE + (partIndex * sizeof(partition)));
 
     /* Make sure it is a valid MINIX partition */
-    if (part->type != 0x81)
+    if(part->type != 0x81)
     {
         fprintf(stderr, "ERROR: not a MINIX partition!\n");
         exit(-1);
@@ -184,10 +108,10 @@ unsigned char *enterPartition(unsigned char *data, unsigned char *diskStart,
 int main(int argc, char **argv)
 {
     /* If no arguments specified, print usage */
-    if (argc < 2)
+    if(argc < 2)
     {
         printUsage();
-        return 0;
+        return -1;
     }
 
     char *filename = NULL;
@@ -199,14 +123,14 @@ int main(int argc, char **argv)
 
     /* Loop through argument flags */
     int c;
-    while ((c = getopt(argc, argv, "hvp:s:")) != -1)
+    while((c = getopt(argc, argv, "hvp:s:")) != -1)
     {
-        switch (c)
+        switch(c)
         {
         /* Partition is specified */
         case 'p':
             usePartition = atoi(optarg);
-            if (usePartition < 0 || usePartition > 3)
+            if(usePartition < 0 || usePartition > 3)
             {
                 fprintf(stderr, "ERROR: partition must be in the range 0-3.\n");
                 exit(-1);
@@ -214,14 +138,14 @@ int main(int argc, char **argv)
             break;
         /* Subpartition is specified */
         case 's':
-            if (usePartition == -1)
+            if(usePartition == -1)
             {
                 fprintf(stderr, "ERROR: cannot set subpartition unless main "
                                 "partition is specified.\n");
                 return -1;
             }
             useSubpart = atoi(optarg);
-            if (useSubpart < 0 || useSubpart > 3)
+            if(useSubpart < 0 || useSubpart > 3)
             {
                 fprintf(stderr,
                         "ERROR: subpartition must be in the range 0-3.\n");
@@ -231,7 +155,7 @@ int main(int argc, char **argv)
         /* Help flag */
         case 'h':
             printUsage();
-            return 0;
+            return -1;
         /* Verbose mode enabled */
         case 'v':
             verbose = 1;
@@ -240,7 +164,7 @@ int main(int argc, char **argv)
     }
 
     /* Get image filename */
-    if (optind < argc)
+    if(optind < argc)
     {
         filename = argv[optind];
     }
@@ -251,14 +175,14 @@ int main(int argc, char **argv)
         exit(-1);
     }
     /* Get path (if specified) */
-    if (optind + 1 < argc)
+    if(optind + 1 < argc)
     {
         path = argv[optind + 1];
     }
 
     /* Open image file descriptor */
     FILE *fp = fopen(filename, "rb");
-    if (fp == NULL)
+    if(fp == NULL)
     {
         fprintf(stderr, "ERROR: file not found!\n");
         return -1;
@@ -277,14 +201,14 @@ int main(int argc, char **argv)
     unsigned char *data = diskStart;
 
     /* If a partition was specified */
-    if (usePartition != -1)
+    if(usePartition != -1)
     {
         /* Switch to specified partition */
         unsigned char *diskStart = data;
         data = enterPartition(data, diskStart, usePartition);
 
         /* If subpartition was specified */
-        if (useSubpart != -1)
+        if(useSubpart != -1)
         {
             /* Switch to subpartition */
             data = enterPartition(data, diskStart, useSubpart);
@@ -295,7 +219,7 @@ int main(int argc, char **argv)
     superblock *sb = (superblock *)(data + 1024);
 
     /* Check magic number to ensure that this is a MINIX filesystem */
-    if (sb->magic != 0x4D5A)
+    if(sb->magic != 0x4D5A)
     {
         fprintf(stderr, "Bad magic number. (0x%04X)\n", sb->magic);
         fprintf(stderr, "This doesn't look like a MINIX filesystem.\n");
@@ -306,7 +230,7 @@ int main(int argc, char **argv)
     int zonesize = sb->blocksize << sb->log_zone_size;
 
     /* If verbose mode is enabled, print superblock info */
-    if (verbose)
+    if(verbose)
     {
         printf("\nSuperblock Contents:\n"
                "Stored Fields:\n"
@@ -329,7 +253,7 @@ int main(int argc, char **argv)
     inode *file = findFile(path, data, verbose);
 
     /* If verbose mode is enabled, print file inode info */
-    if (verbose)
+    if(verbose)
     {
         time_t at = file->atime;
         time_t mt = file->mtime;
@@ -367,7 +291,7 @@ int main(int argc, char **argv)
     }
 
     /* Make sure file was found */
-    if (!file)
+    if(!file)
     {
         fprintf(stderr, "ERROR: file not found!\n");
         return -1;

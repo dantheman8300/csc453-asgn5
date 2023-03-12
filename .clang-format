@@ -9,4 +9,6 @@
     ColumnLimit: 80,
     AccessModifierOffset: -4,
     NamespaceIndentation: All,
+    AllowShortFunctionsOnASingleLine: false,
+    SpaceBeforeParens: Never,
 }

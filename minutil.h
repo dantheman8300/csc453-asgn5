@@ -63,3 +63,17 @@ char *getZoneByIndex(int index, inode *file, char *data, int verbose);
 
 /* Retrieves the contents of a file */
 char *getFileContents(inode *file, char *data, int verbose);
+
+inode *getInode(int number, char *data, int verbose);
+
+/* Checks if a file is a directory */
+int isDirectory(inode *file);
+
+/* Gets the directory entry at a certain index */
+dirent *getDirEntByIndex(int index, inode *dir, char *data, int verbose);
+
+/* Gets the directory entry with a certain name */
+dirent *getDirEntByName(char *name, inode *dir, char *data, int verbose);
+
+/* Finds a file inode given the path */
+inode *findFile(char *path, char *data, int verbose);
