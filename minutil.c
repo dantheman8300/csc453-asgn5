@@ -6,7 +6,6 @@
 
 char *getZoneByIndex(int index, inode *file, char *data, int verbose)
 {
-
     if(verbose == 1)
         printf("getZoneByIndex: %d\n", index);
 
@@ -23,6 +22,10 @@ char *getZoneByIndex(int index, inode *file, char *data, int verbose)
         if(verbose == 1)
             printf("\tzone data: %s\n", data + (file->zone[index] * zonesize));
 
+        /* Check if the zone is a hole */
+        if(file->zone[index] == 0)
+            return NULL;
+
         return data + (file->zone[index] * zonesize);
     }
     /* Target is an indirect zone */
@@ -31,9 +34,16 @@ char *getZoneByIndex(int index, inode *file, char *data, int verbose)
         int indirectIndex = index - 7;
         int numIndirectLinks = blocksize / sizeof(uint32_t);
 
+        // if(verbose == 1)
+        //     printf("indirectIndex: %d\n", indirectIndex);
+
         /* Target is in a single indirect zone */
         if(indirectIndex < numIndirectLinks)
         {
+            /* Check if the indirect zone is a hole */
+            if(file->indirect == 0)
+                return NULL;
+
             /* Get reference to indirect zone */
             uint32_t *indirectZone =
                 (uint32_t *)(data + (file->indirect * zonesize));
@@ -83,7 +93,7 @@ char *getFileContents(inode *file, char *data, int verbose)
     char *fileData = (char *)calloc(file->size + 1, sizeof(char));
 
     if(verbose == 1)
-        printf("fileData size: %d\n", file->size + 1);
+        printf("fileData size: %d\n", file->size);
 
     if(fileData == NULL)
     {
@@ -96,6 +106,9 @@ char *getFileContents(inode *file, char *data, int verbose)
 
     /* Calculate the number of zones the file contains */
     int totalZones = (file->size / zonesize) + ((file->size % zonesize) != 0);
+
+    if(verbose == 1)
+        printf("totalZones: %d\n", totalZones);
 
     /* Loop through all relevant zones */
     int i;
@@ -113,7 +126,7 @@ char *getFileContents(inode *file, char *data, int verbose)
             int bytesToCopy = zonesize;
 
             /* If this is the last zone, only copy the relevant portion */
-            if(i == totalZones - 1)
+            if(i == totalZones - 1 && file->size % zonesize != 0)
                 bytesToCopy = file->size % zonesize;
 
             if(verbose == 1)
@@ -123,6 +136,11 @@ char *getFileContents(inode *file, char *data, int verbose)
 
             if(verbose == 1)
                 printf("fileData: %s\n", fileData);
+        }
+        else
+        {
+            if(verbose == 1)
+                printf("zone is a hole!\n");
         }
     }
     fileData[file->size] = '\0';
@@ -145,6 +163,12 @@ inode *getInode(int number, char *data, int verbose)
 int isDirectory(inode *file)
 {
     return (file->mode & 0170000) == 040000;
+}
+
+/* Checks if a file is a regular file */
+int isRegularFile(inode *file)
+{
+    return (file->mode & 0170000) == 0100000;
 }
 
 /* Gets the directory entry at a certain index */

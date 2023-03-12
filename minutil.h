@@ -69,6 +69,9 @@ inode *getInode(int number, char *data, int verbose);
 /* Checks if a file is a directory */
 int isDirectory(inode *file);
 
+/* Checks if a file is a regular file */
+int isRegularFile(inode *file);
+
 /* Gets the directory entry at a certain index */
 dirent *getDirEntByIndex(int index, inode *dir, char *data, int verbose);
 

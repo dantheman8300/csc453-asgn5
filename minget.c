@@ -548,9 +548,9 @@ int main(int argc, char **argv)
         fprintf(stderr, "ERROR: file not found\n");
         return -1;
     }
-    else if(isDirectory(file))
+    else if(!isRegularFile(file))
     {
-        fprintf(stderr, "ERROR: file is a directory\n");
+        fprintf(stderr, "ERROR: not a regular file!\n");
         return -1;
     }
 
@@ -570,7 +570,7 @@ int main(int argc, char **argv)
 
     if(dstpath == NULL)
     {
-        printf("%s", fileData);
+        fwrite(fileData, 1, file->size, stdout);
     }
     else
     {
