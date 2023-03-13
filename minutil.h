@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdio.h>
 
 #define DIRECT_ZONES 7
 
@@ -57,14 +58,21 @@ typedef struct dirent
     unsigned char name[60];
 } dirent;
 
+/* Reads bytes from the filesystem image at a specified location */
+unsigned char *getData(uint32_t start, uint32_t size, FILE *file,
+                       int partitionStart);
+
 /* Gets a data zone from an inode at a given index (starting from zero) */
-char *getZoneByIndex(int index, inode *file, char *data, int verbose);
+char *getZoneByIndex(int index, inode *file, FILE *image, superblock *sb,
+                     int partitionStart, int verbose);
 
 /* Retrieves the contents of a file */
-char *getFileContents(inode *file, char *data, int verbose);
+char *getFileContents(inode *file, FILE *image, superblock *sb,
+                      int partitionStart, int verbose);
 
 /* Gets an inode struct given its index */
-inode *getInode(int number, char *data, int verbose);
+inode *getInode(int number, FILE *image, superblock *sb, int partitionStart,
+                int verbose);
 
 /* Checks if a file is a directory */
 int isDirectory(inode *file);
@@ -73,10 +81,16 @@ int isDirectory(inode *file);
 int isRegularFile(inode *file);
 
 /* Gets the directory entry at a certain index */
-dirent *getDirEntByIndex(int index, inode *dir, char *data, int verbose);
+dirent *getDirEntByIndex(int index, inode *dir, FILE *image, superblock *sb,
+                         int partitionStart, int verbose);
 
 /* Gets the directory entry with a certain name */
-dirent *getDirEntByName(char *name, inode *dir, char *data, int verbose);
+dirent *getDirEntByName(char *name, inode *dir, FILE *image, superblock *sb,
+                        int partitionStart, int verbose);
 
 /* Finds a file inode given the path */
-inode *findFile(char *path, char *data, int verbose);
+inode *findFile(char *path, FILE *image, superblock *sb, int partitionStart,
+                int verbose);
+
+/* Gets the location on disk of a specified partition */
+uint32_t enterPartition(FILE *file, uint32_t currentStart, int partIndex);
