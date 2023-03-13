@@ -4,12 +4,39 @@
 #include <stdlib.h>
 #include <string.h>
 
-char *getZoneByIndex(int index, inode *file, char *data, int verbose)
+/* Reads bytes from the filesystem image at a specified location */
+unsigned char *getData(uint32_t start, uint32_t size, FILE *file,
+                       int partitionStart)
+{
+    /* Allocate buffer for read data */
+    unsigned char *data = (unsigned char *)malloc(size);
+
+    /* Seek to specified start location */
+    int status = fseek(file, start + partitionStart, SEEK_SET);
+    if(status != 0)
+    {
+        fprintf(stderr, "ERROR: tried to access invalid image location!\n");
+        exit(-1);
+    }
+
+    /* Read data from image */
+    int read = fread(data, 1, size, file);
+    if(read != size)
+    {
+        fprintf(stderr, "ERROR: could not read all data from image!\n");
+        exit(-1);
+    }
+
+    return data;
+}
+
+/* Gets a data zone from an inode at a given index (starting from zero) */
+char *getZoneByIndex(int index, inode *file, FILE *image, superblock *sb,
+                     int partitionStart, int verbose)
 {
     if(verbose == 1)
         printf("getZoneByIndex: %d\n", index);
 
-    superblock *sb = (superblock *)(data + 1024);
     int blocksize = sb->blocksize;
     int zonesize = blocksize << sb->log_zone_size;
 
@@ -23,10 +50,14 @@ char *getZoneByIndex(int index, inode *file, char *data, int verbose)
         if(file->zone[index] == 0)
             return NULL;
 
-        if(verbose == 1)
-            printf("\tzone data: %s\n", data + (file->zone[index] * zonesize));
+        char *data = getData(file->zone[index] * zonesize, zonesize, image,
+                             partitionStart);
 
-        return data + (file->zone[index] * zonesize);
+        if(verbose == 1)
+            printf("\tzone data: %s\n", data);
+
+        return data;
+        // return data + (file->zone[index] * zonesize);
     }
     /* Target is an indirect zone */
     else
@@ -45,15 +76,16 @@ char *getZoneByIndex(int index, inode *file, char *data, int verbose)
                 return NULL;
 
             /* Get reference to indirect zone */
-            uint32_t *indirectZone =
-                (uint32_t *)(data + (file->indirect * zonesize));
+            uint32_t *indirectZone = (uint32_t *)(getData(
+                file->indirect * zonesize, zonesize, image, partitionStart));
 
             /* Check if the zone is a hole */
             if(indirectZone[indirectIndex] == 0)
                 return NULL;
 
             /* Find and return the target zone */
-            return data + (indirectZone[indirectIndex] * zonesize);
+            return getData(indirectZone[indirectIndex] * zonesize, zonesize,
+                           image, partitionStart);
         }
         /* Target is in a doubly indirect zone */
         else
@@ -68,7 +100,8 @@ char *getZoneByIndex(int index, inode *file, char *data, int verbose)
 
                 /* Get reference to doubly indirect zone */
                 uint32_t *doubleIndirectZone =
-                    (uint32_t *)(data + (file->two_indirect * zonesize));
+                    (uint32_t *)(getData(file->two_indirect * zonesize,
+                                         zonesize, image, partitionStart));
 
                 /* Get index of indirect zone in doubly indirect zone */
                 int indirectZoneIndex = doubleIndirectIndex / numIndirectLinks;
@@ -78,9 +111,9 @@ char *getZoneByIndex(int index, inode *file, char *data, int verbose)
                     return NULL;
 
                 /* Get reference to indirect zone */
-                uint32_t *indirectZone =
-                    (uint32_t *)(data + (doubleIndirectZone[indirectZoneIndex] *
-                                         zonesize));
+                uint32_t *indirectZone = (uint32_t *)(getData(
+                    doubleIndirectZone[indirectZoneIndex] * zonesize, zonesize,
+                    image, partitionStart));
 
                 /* Get index of target in indirect zone */
                 int directZoneIndex = doubleIndirectIndex % numIndirectLinks;
@@ -90,7 +123,8 @@ char *getZoneByIndex(int index, inode *file, char *data, int verbose)
                     return NULL;
 
                 /* Find and return the target zone */
-                return data + (indirectZone[directZoneIndex] * zonesize);
+                return getData(indirectZone[directZoneIndex] * zonesize,
+                               zonesize, image, partitionStart);
             }
         }
 
@@ -101,10 +135,11 @@ char *getZoneByIndex(int index, inode *file, char *data, int verbose)
 }
 
 /* Retrieves the contents of a file */
-char *getFileContents(inode *file, char *data, int verbose)
+char *getFileContents(inode *file, FILE *image, superblock *sb,
+                      int partitionStart, int verbose)
 {
     /* Initialize buffer for file data with all zeros */
-    char *fileData = (char *)calloc(file->size + 1, sizeof(char));
+    char *fileData = (char *)calloc(file->size, sizeof(char));
 
     if(verbose == 1)
         printf("fileData size: %d\n", file->size);
@@ -115,7 +150,6 @@ char *getFileContents(inode *file, char *data, int verbose)
         exit(-1);
     }
 
-    superblock *sb = (superblock *)(data + 1024);
     int zonesize = sb->blocksize << sb->log_zone_size;
 
     /* Calculate the number of zones the file contains */
@@ -129,7 +163,8 @@ char *getFileContents(inode *file, char *data, int verbose)
     for(i = 0; i < totalZones; i++)
     {
         /* Retrieve the target zone */
-        char *zoneData = getZoneByIndex(i, file, data, verbose);
+        char *zoneData =
+            getZoneByIndex(i, file, image, sb, partitionStart, verbose);
 
         /* If it's not a hole, copy it to the buffer */
         if(zoneData != NULL)
@@ -154,7 +189,6 @@ char *getFileContents(inode *file, char *data, int verbose)
                 printf("zone is a hole!\n");
         }
     }
-    fileData[file->size] = '\0';
 
     if(verbose == 1)
         printf("fileData: %s\n", fileData);
@@ -163,12 +197,13 @@ char *getFileContents(inode *file, char *data, int verbose)
 }
 
 /* Gets an inode struct given its index */
-inode *getInode(int number, char *data, int verbose)
+inode *getInode(int number, FILE *image, superblock *sb, int partitionStart,
+                int verbose)
 {
-    superblock *sb = (superblock *)(data + 1024);
-    return (inode *)(data +
-                     ((2 + sb->i_blocks + sb->z_blocks) * sb->blocksize) +
-                     ((number - 1) * sizeof(inode)));
+    int start = ((2 + sb->i_blocks + sb->z_blocks) * sb->blocksize) +
+                ((number - 1) * sizeof(inode));
+
+    return (inode *)getData(start, sizeof(inode), image, partitionStart);
 }
 
 /* Checks if a file is a directory */
@@ -184,15 +219,17 @@ int isRegularFile(inode *file)
 }
 
 /* Gets the directory entry at a certain index */
-dirent *getDirEntByIndex(int index, inode *dir, char *data, int verbose)
+dirent *getDirEntByIndex(int index, inode *dir, FILE *image, superblock *sb,
+                         int partitionStart, int verbose)
 {
-    superblock *sb = (superblock *)(data + 1024);
+    // superblock *sb = (superblock *)(data + 1024);
     int zonesize = sb->blocksize << sb->log_zone_size;
     int direntsPerZone = zonesize / sizeof(dirent);
 
     /* Get zone containing target dirent */
     int targetZoneIndex = index / direntsPerZone;
-    char *targetZone = getZoneByIndex(targetZoneIndex, dir, data, verbose);
+    char *targetZone = getZoneByIndex(targetZoneIndex, dir, image, sb,
+                                      partitionStart, verbose);
 
     /* Get index of target dirent in the zone */
     int relativeIndex = index - (targetZoneIndex * direntsPerZone);
@@ -202,14 +239,16 @@ dirent *getDirEntByIndex(int index, inode *dir, char *data, int verbose)
 }
 
 /* Gets the directory entry with a certain name */
-dirent *getDirEntByName(char *name, inode *dir, char *data, int verbose)
+dirent *getDirEntByName(char *name, inode *dir, FILE *image, superblock *sb,
+                        int partitionStart, int verbose)
 {
     int containedFiles = dir->size / 64;
 
     int i;
     for(i = 0; i < containedFiles; i++)
     {
-        dirent *current = getDirEntByIndex(i, dir, data, verbose);
+        dirent *current =
+            getDirEntByIndex(i, dir, image, sb, partitionStart, verbose);
 
         if(current->inode != 0 && strcmp(name, current->name) == 0)
             return current;
@@ -219,9 +258,10 @@ dirent *getDirEntByName(char *name, inode *dir, char *data, int verbose)
 }
 
 /* Finds a file inode given the path */
-inode *findFile(char *path, char *data, int verbose)
+inode *findFile(char *path, FILE *image, superblock *sb, int partitionStart,
+                int verbose)
 {
-    inode *current = getInode(1, data, verbose);
+    inode *current = getInode(1, image, sb, partitionStart, verbose);
 
     char *tempPath = malloc(strlen(path) + 1);
     strcpy(tempPath, path);
@@ -235,17 +275,48 @@ inode *findFile(char *path, char *data, int verbose)
             exit(-1);
         }
 
-        dirent *newDir = getDirEntByName(token, current, data, verbose);
+        dirent *newDir =
+            getDirEntByName(token, current, image, sb, partitionStart, verbose);
 
         if(newDir == NULL)
         {
             return NULL;
         }
-        current = getInode(newDir->inode, data, verbose);
+        current = getInode(newDir->inode, image, sb, partitionStart, verbose);
 
         token = strtok(NULL, "/");
     }
 
     free(tempPath);
     return current;
+}
+
+/* Gets the location on disk of a specified partition */
+uint32_t enterPartition(FILE *file, uint32_t currentStart, int partIndex)
+{
+    /* Get the start of the partition table */
+    unsigned char *data = getData(0, 512, file, currentStart);
+
+    /* Check partition table signature for validity */
+    if(*((data + 510)) != 0x55 || *(data + 511) != 0xAA)
+    {
+        fprintf(stderr, "ERROR: invalid partition table!\n");
+        exit(-1);
+    }
+
+    /* Get the target partition table entry */
+    partition *part =
+        (partition *)(data + 0x1BE + (partIndex * sizeof(partition)));
+
+    /* Make sure it is a valid MINIX partition */
+    if(part->type != 0x81)
+    {
+        fprintf(stderr, "ERROR: not a MINIX partition!\n");
+        exit(-1);
+    }
+
+    /* Get the offset to the partition contents */
+    int start = part->lFirst * 512;
+
+    return start;
 }

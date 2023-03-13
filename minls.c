@@ -1,8 +1,6 @@
 #include "minutil.h"
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -32,25 +30,28 @@ void printFileInfo(inode *file, char *name)
 }
 
 /* Prints the contents of a directory */
-int printContents(inode *dir, char *path, char *data, int zonesize, int verbose)
+int printContents(inode *dir, char *path, FILE *image, superblock *sb,
+                  int partitionStart, int zonesize, int verbose)
 {
     if(isDirectory(dir))
     {
         int containedFiles = dir->size / 64;
 
-        char *zone1 = data + (dir->zone[0] * zonesize);
-        dirent *contents = (dirent *)zone1;
+        // char *zone1 = data + (dir->zone[0] * zonesize);
+        // dirent *contents = (dirent *)zone1;
 
         printf("%s:\n", path);
 
         int i;
         for(i = 0; i < containedFiles; i++)
         {
-            dirent *current = getDirEntByIndex(i, dir, data, verbose);
+            dirent *current =
+                getDirEntByIndex(i, dir, image, sb, partitionStart, verbose);
 
             if(current->inode != 0)
             {
-                printFileInfo(getInode(current->inode, data, verbose),
+                printFileInfo(getInode(current->inode, image, sb,
+                                       partitionStart, verbose),
                               current->name);
             }
         }
@@ -74,35 +75,6 @@ void printUsage()
         "-s sub     --- select subpartition for filesystem (default: none)\n"
         "-h help    --- print usage information and exit\n"
         "-v verbose --- increase verbosity level\n");
-}
-
-/* Gets the location on disk of a specified partition */
-unsigned char *enterPartition(unsigned char *data, unsigned char *diskStart,
-                              int partIndex)
-{
-    /* Check partition table signature for validity */
-    if(*((data + 510)) != 0x55 || *(data + 511) != 0xAA)
-    {
-        fprintf(stderr, "ERROR: invalid partition table!\n");
-        exit(-1);
-    }
-
-    /* Get the target partition table entry */
-    partition *part =
-        (partition *)(data + 0x1BE + (partIndex * sizeof(partition)));
-
-    /* Make sure it is a valid MINIX partition */
-    if(part->type != 0x81)
-    {
-        fprintf(stderr, "ERROR: not a MINIX partition!\n");
-        exit(-1);
-    }
-
-    /* Get the offset to the partition contents */
-    int start = part->lFirst * 512;
-
-    // TODO: make sure this isn't off the end of the image
-    return (diskStart + start);
 }
 
 int main(int argc, char **argv)
@@ -181,42 +153,47 @@ int main(int argc, char **argv)
     }
 
     /* Open image file descriptor */
-    FILE *fp = fopen(filename, "rb");
-    if(fp == NULL)
+    FILE *image = fopen(filename, "rb");
+    if(image == NULL)
     {
         fprintf(stderr, "ERROR: file not found!\n");
         return -1;
     }
 
     /* Find total length of file, in bytes */
-    fseek(fp, 0L, SEEK_END);
-    long filesize = ftell(fp);
-    fseek(fp, 0L, SEEK_SET);
+    // fseek(file, 0L, SEEK_END);
+    // long filesize = ftell(fp);
+    // fseek(fp, 0L, SEEK_SET);
 
     /* Read contents of file into memory */
-    unsigned char *diskStart = malloc(filesize);
-    fread(diskStart, 1, filesize, fp);
-    fclose(fp);
+    // unsigned char *diskStart = malloc(filesize);
+    // fread(diskStart, 1, filesize, fp);
+    // fclose(fp);
 
-    unsigned char *data = diskStart;
+    // unsigned char *data = diskStart;
+
+    int partitionStart = 0;
 
     /* If a partition was specified */
     if(usePartition != -1)
     {
         /* Switch to specified partition */
-        unsigned char *diskStart = data;
-        data = enterPartition(data, diskStart, usePartition);
+        partitionStart = enterPartition(image, partitionStart, usePartition);
 
         /* If subpartition was specified */
         if(useSubpart != -1)
         {
             /* Switch to subpartition */
-            data = enterPartition(data, diskStart, useSubpart);
+            partitionStart = enterPartition(image, partitionStart, useSubpart);
         }
     }
 
+    /* Get superblock */
+    superblock *sb =
+        (superblock *)getData(1024, sizeof(superblock), image, partitionStart);
+
     /* Find superblock */
-    superblock *sb = (superblock *)(data + 1024);
+    // superblock *sb = (superblock *)(data + 1024);
 
     /* Check magic number to ensure that this is a MINIX filesystem */
     if(sb->magic != 0x4D5A)
@@ -250,7 +227,7 @@ int main(int argc, char **argv)
     }
 
     /* Get inode of file at path specified */
-    inode *file = findFile(path, data, verbose);
+    inode *file = findFile(path, image, sb, partitionStart, verbose);
 
     /* If verbose mode is enabled, print file inode info */
     if(verbose)
@@ -298,8 +275,9 @@ int main(int argc, char **argv)
     }
 
     /* Print info about file, or directory contents */
-    printContents(file, path, data, zonesize, verbose);
+    printContents(file, path, image, sb, partitionStart, zonesize, verbose);
 
-    /* Free the memory allocated for the image data */
-    free(diskStart);
+    free(sb);
+    free(file);
+    fclose(image);
 }
