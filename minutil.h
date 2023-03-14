@@ -81,12 +81,12 @@ int isDirectory(inode *file);
 int isRegularFile(inode *file);
 
 /* Gets the directory entry at a certain index */
-dirent *getDirEntByIndex(int index, inode *dir, FILE *image, superblock *sb,
-                         int partitionStart, int verbose);
+dirent getDirEntByIndex(int index, inode *dir, FILE *image, superblock *sb,
+                        int partitionStart, int verbose);
 
 /* Gets the directory entry with a certain name */
-dirent *getDirEntByName(char *name, inode *dir, FILE *image, superblock *sb,
-                        int partitionStart, int verbose);
+dirent getDirEntByName(char *name, inode *dir, FILE *image, superblock *sb,
+                       int partitionStart, int verbose);
 
 /* Finds a file inode given the path */
 inode *findFile(char *path, FILE *image, superblock *sb, int partitionStart,

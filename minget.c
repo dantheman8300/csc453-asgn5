@@ -46,7 +46,7 @@ int main(int argc, char **argv)
             if(usePartition < 0 || usePartition > 3)
             {
                 fprintf(stderr, "ERROR: partition must be in the range 0-3.\n");
-                exit(-1);
+                return -1;
             }
             break;
         /* Subpartition is specified */
@@ -62,7 +62,7 @@ int main(int argc, char **argv)
             {
                 fprintf(stderr,
                         "ERROR: subpartition must be in the range 0-3.\n");
-                exit(-1);
+                return -1;
             }
             break;
         /* Help flag */
@@ -86,7 +86,7 @@ int main(int argc, char **argv)
         if(verbose == 1)
             fprintf(stderr, "ERROR: image name required.\n");
         printUsage();
-        exit(-1);
+        return -1;
     }
 
     optind++;
@@ -101,7 +101,7 @@ int main(int argc, char **argv)
         if(verbose == 1)
             fprintf(stderr, "ERROR: srcpath required.\n");
         printUsage();
-        exit(-1);
+        return -1;
     }
 
     optind++;
@@ -157,7 +157,7 @@ int main(int argc, char **argv)
     {
         fprintf(stderr, "Bad magic number. (0x%04X)\n", sb->magic);
         fprintf(stderr, "This doesn't look like a MINIX filesystem.\n");
-        exit(-1);
+        return -1;
     }
 
     int zonesize = sb->blocksize << sb->log_zone_size;
@@ -226,5 +226,6 @@ int main(int argc, char **argv)
 
     free(sb);
     free(file);
+    free(fileData);
     fclose(image);
 }

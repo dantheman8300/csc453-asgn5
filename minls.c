@@ -45,14 +45,14 @@ int printContents(inode *dir, char *path, FILE *image, superblock *sb,
         int i;
         for(i = 0; i < containedFiles; i++)
         {
-            dirent *current =
+            dirent current =
                 getDirEntByIndex(i, dir, image, sb, partitionStart, verbose);
 
-            if(current->inode != 0)
+            if(current.inode != 0)
             {
-                printFileInfo(getInode(current->inode, image, sb,
-                                       partitionStart, verbose),
-                              current->name);
+                printFileInfo(
+                    getInode(current.inode, image, sb, partitionStart, verbose),
+                    current.name);
             }
         }
 
@@ -105,7 +105,7 @@ int main(int argc, char **argv)
             if(usePartition < 0 || usePartition > 3)
             {
                 fprintf(stderr, "ERROR: partition must be in the range 0-3.\n");
-                exit(-1);
+                return -1;
             }
             break;
         /* Subpartition is specified */
@@ -121,7 +121,7 @@ int main(int argc, char **argv)
             {
                 fprintf(stderr,
                         "ERROR: subpartition must be in the range 0-3.\n");
-                exit(-1);
+                return -1;
             }
             break;
         /* Help flag */
@@ -144,7 +144,7 @@ int main(int argc, char **argv)
     {
         fprintf(stderr, "ERROR: image name required.\n");
         printUsage();
-        exit(-1);
+        return -1;
     }
     /* Get path (if specified) */
     if(optind + 1 < argc)
@@ -159,18 +159,6 @@ int main(int argc, char **argv)
         fprintf(stderr, "ERROR: file not found!\n");
         return -1;
     }
-
-    /* Find total length of file, in bytes */
-    // fseek(file, 0L, SEEK_END);
-    // long filesize = ftell(fp);
-    // fseek(fp, 0L, SEEK_SET);
-
-    /* Read contents of file into memory */
-    // unsigned char *diskStart = malloc(filesize);
-    // fread(diskStart, 1, filesize, fp);
-    // fclose(fp);
-
-    // unsigned char *data = diskStart;
 
     int partitionStart = 0;
 
@@ -192,15 +180,12 @@ int main(int argc, char **argv)
     superblock *sb =
         (superblock *)getData(1024, sizeof(superblock), image, partitionStart);
 
-    /* Find superblock */
-    // superblock *sb = (superblock *)(data + 1024);
-
     /* Check magic number to ensure that this is a MINIX filesystem */
     if(sb->magic != 0x4D5A)
     {
         fprintf(stderr, "Bad magic number. (0x%04X)\n", sb->magic);
         fprintf(stderr, "This doesn't look like a MINIX filesystem.\n");
-        exit(-1);
+        return -1;
     }
 
     /* Calculate zone size */
@@ -277,6 +262,7 @@ int main(int argc, char **argv)
     /* Print info about file, or directory contents */
     printContents(file, path, image, sb, partitionStart, zonesize, verbose);
 
+    /* Free memory */
     free(sb);
     free(file);
     fclose(image);
