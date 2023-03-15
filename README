@@ -1,0 +1,8 @@
+Name: Josh Kerley & Daniel Leavitt
+Instructions: 
+  make all: compiles minls.c and minget.c
+  make minls: compiles minls.c
+  make minget: compiles minget.c
+  make clean: removes executable files
+Notes: 
+  We most of the mutual functionality in the minutil.c file. 
